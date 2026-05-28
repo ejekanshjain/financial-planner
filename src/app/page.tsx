@@ -21,6 +21,36 @@ const MAX_TARGET = 100 * CRORE // ₹100 Cr
 const clamp = (n: number, min: number, max: number) =>
   Math.min(max, Math.max(min, n))
 
+/* ── logarithmic slider helpers (0-1000 → 0 to 100 Cr) ────── */
+const LOG_MIN = 1e5 // 1 lakh
+const LOG_MAX = MAX_TARGET
+
+function logSliderToValue(pos: number): number {
+  if (pos <= 0) return 0
+  const lo = Math.log10(LOG_MIN)
+  const hi = Math.log10(LOG_MAX)
+  const raw = Math.pow(10, lo + ((hi - lo) * (pos - 1)) / 999)
+  // snap to 2 significant figures for clean numbers while dragging
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)) - 1)
+  return Math.round(raw / mag) * mag
+}
+
+function valueToLogSlider(value: number): number {
+  if (value <= 0) return 0
+  const lo = Math.log10(LOG_MIN)
+  const hi = Math.log10(LOG_MAX)
+  return 1 + Math.round(((Math.log10(Math.max(LOG_MIN, value)) - lo) / (hi - lo)) * 999)
+}
+
+const TARGET_PRESETS = [
+  { label: '1 Cr', value: 1 * CRORE },
+  { label: '2 Cr', value: 2 * CRORE },
+  { label: '5 Cr', value: 5 * CRORE },
+  { label: '10 Cr', value: 10 * CRORE },
+  { label: '25 Cr', value: 25 * CRORE },
+  { label: '50 Cr', value: 50 * CRORE },
+]
+
 const inr = (n: number) =>
   '₹' +
   new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(
@@ -35,6 +65,96 @@ const inrWords = (n: number) => {
   if (n >= 1e5) return `₹${trim(n / 1e5)} L`
   if (n >= 1e3) return `₹${trim(n / 1e3)} K`
   return inr(n)
+}
+
+/* ── target wealth field: log slider + preset pills ─────────── */
+function TargetWealthField({
+  value,
+  onChange
+}: {
+  value: number
+  onChange: (n: number) => void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const shown = draft ?? String(value)
+
+  const handleText = (raw: string) => {
+    setDraft(raw)
+    if (raw.trim() === '') return
+    const parsed = Number(raw.replace(/,/g, ''))
+    if (!Number.isFinite(parsed)) return
+    onChange(Math.min(parsed, MAX_TARGET))
+  }
+
+  const commit = () => {
+    const parsed = Number((draft ?? String(value)).replace(/,/g, ''))
+    onChange(clamp(Number.isFinite(parsed) ? parsed : 0, 0, MAX_TARGET))
+    setDraft(null)
+  }
+
+  const sliderPos = valueToLogSlider(value)
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <label className="text-[13px] font-medium tracking-wide text-[#10301d]/80 uppercase">
+          Target wealth
+        </label>
+        <div className="flex items-stretch overflow-hidden rounded-md border border-[#10301d]/15 bg-[#fffdf7] focus-within:border-[#b5893a] focus-within:ring-2 focus-within:ring-[#b5893a]/25">
+          <input
+            type="number"
+            inputMode="decimal"
+            value={shown}
+            min={0}
+            max={MAX_TARGET}
+            onChange={e => handleText(e.target.value)}
+            onBlur={commit}
+            onKeyDown={e => e.key === 'Enter' && commit()}
+            className={`w-32 [appearance:textfield] bg-transparent px-3 py-1.5 text-right text-[15px] font-semibold text-[#10301d] tabular-nums outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${display.className}`}
+          />
+          <span className="flex items-center bg-[#10301d]/5 px-2.5 text-[13px] font-medium text-[#10301d]/55">
+            ₹
+          </span>
+        </div>
+      </div>
+
+      {/* preset pills */}
+      <div className="flex flex-wrap gap-1.5">
+        {TARGET_PRESETS.map(p => {
+          const active = value === p.value
+          return (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => { onChange(p.value); setDraft(null) }}
+              className={`rounded px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+                active
+                  ? 'bg-[#1d4d31] text-[#f4efe2]'
+                  : 'border border-[#10301d]/20 text-[#10301d]/60 hover:border-[#1d4d31]/60 hover:text-[#1d4d31]'
+              }`}
+            >
+              {p.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* logarithmic slider */}
+      <input
+        type="range"
+        value={sliderPos}
+        min={0}
+        max={1000}
+        step={1}
+        onChange={e => {
+          onChange(logSliderToValue(Number(e.target.value)))
+          setDraft(null)
+        }}
+        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#10301d]/12 accent-[#1d4d31] outline-none"
+      />
+      <p className="text-xs text-[#10301d]/45">{inrWords(value)} · slider up to ₹100 Cr</p>
+    </div>
+  )
 }
 
 /* ── one input row: text box + slider, both keyboard driven ─ */
@@ -217,16 +337,7 @@ export default function StepUpSipCalculator() {
               Your plan
             </h2>
             <div className="space-y-7">
-              <Field
-                label="Target wealth"
-                value={target}
-                onChange={setTarget}
-                min={0}
-                max={MAX_TARGET}
-                step={1e5}
-                suffix="₹"
-                helper={`${inrWords(target)} · slider up to ₹100 Cr`}
-              />
+              <TargetWealthField value={target} onChange={setTarget} />
               <Field
                 label="Years to goal"
                 value={years}
