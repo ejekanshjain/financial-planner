@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useMemo, useState } from 'react'
+import { useEffect, useRef, useMemo, useState } from 'react'
 import { displayFont } from '~/lib/fonts'
 import {
   CHART_PALETTE,
@@ -175,8 +175,29 @@ function ClearPopover({
   onClear: () => void
   onClose: () => void
 }) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  // Close on Escape or a click anywhere outside the popover.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onDown)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onDown)
+    }
+  }, [onClose])
+
   return (
-    <div className="absolute top-11 right-0 z-10 w-60 rounded-xl border border-[#10301d]/10 bg-white p-4 shadow-xl">
+    <div
+      ref={ref}
+      role="dialog"
+      aria-label="Confirm deleting all goals"
+      className="absolute top-11 right-0 z-10 w-60 rounded-xl border border-[#10301d]/10 bg-white p-4 shadow-xl"
+    >
       <p className="mb-3 text-[13px] leading-snug text-[#10301d]/70">
         Delete all goals? This can&rsquo;t be undone.
       </p>
@@ -204,6 +225,7 @@ function ClearPopover({
 /* ── dashboard ────────────────────────────────────────────── */
 export function Dashboard({
   goals,
+  storageError = false,
   onAdd,
   onOpen,
   onDelete,
@@ -211,6 +233,7 @@ export function Dashboard({
   onImport
 }: {
   goals: Goal[]
+  storageError?: boolean
   onAdd: (goal: Goal) => void
   onOpen: (id: string) => void
   onDelete: (id: string) => void
@@ -320,6 +343,7 @@ export function Dashboard({
             <button
               onClick={() => fileRef.current?.click()}
               title="Import goals from a JSON file"
+              aria-label="Import goals from a JSON file"
               className="flex h-9 w-9 items-center justify-center rounded-full border border-[#10301d]/20 text-[#10301d]/45 transition-colors hover:border-[#1d4d31]/50 hover:text-[#1d4d31]"
             >
               <svg
@@ -342,6 +366,7 @@ export function Dashboard({
               <button
                 onClick={handleShare}
                 title="Copy a shareable link to these goals"
+                aria-label="Copy a shareable link to these goals"
                 className="flex h-9 w-9 items-center justify-center rounded-full border border-[#10301d]/20 text-[#10301d]/45 transition-colors hover:border-[#1d4d31]/50 hover:text-[#1d4d31]"
               >
                 <svg
@@ -365,6 +390,7 @@ export function Dashboard({
               <button
                 onClick={() => downloadGoals(goals)}
                 title="Export goals to a JSON file"
+                aria-label="Export goals to a JSON file"
                 className="flex h-9 w-9 items-center justify-center rounded-full border border-[#10301d]/20 text-[#10301d]/45 transition-colors hover:border-[#1d4d31]/50 hover:text-[#1d4d31]"
               >
                 <svg
@@ -388,6 +414,9 @@ export function Dashboard({
                 <button
                   onClick={() => setShowClear(v => !v)}
                   title="Clear all data"
+                  aria-label="Clear all data"
+                  aria-haspopup="dialog"
+                  aria-expanded={showClear}
                   className="flex h-9 w-9 items-center justify-center rounded-full border border-[#10301d]/20 text-[#10301d]/35 transition-colors hover:border-red-300 hover:text-red-400"
                 >
                   <svg
@@ -435,6 +464,17 @@ export function Dashboard({
           </div>
         </header>
 
+        {/* ── storage failure warning ──────────────────────── */}
+        {storageError && (
+          <div
+            role="alert"
+            className="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[13px] text-amber-800"
+          >
+            Your browser is blocking local storage, so changes won&rsquo;t be
+            saved between visits. Export your goals to keep a copy.
+          </div>
+        )}
+
         {/* ── import status banner ─────────────────────────── */}
         {importMsg && (
           <div
@@ -447,6 +487,7 @@ export function Dashboard({
             <span>{importMsg.text}</span>
             <button
               onClick={() => setImportMsg(null)}
+              aria-label="Dismiss message"
               className="shrink-0 rounded-full px-2 py-0.5 text-current/60 transition-colors hover:bg-black/5"
             >
               ✕

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { displayFont } from '~/lib/fonts'
 import {
   calcGoal,
@@ -43,6 +43,7 @@ function Field({
 }) {
   const [draft, setDraft] = useState<string | null>(null)
   const shown = draft ?? String(value)
+  const fieldId = useId()
 
   const commit = () => {
     const parsed = Number((draft ?? String(value)).replace(/,/g, ''))
@@ -53,11 +54,15 @@ function Field({
   return (
     <div className="space-y-2.5">
       <div className="flex items-baseline justify-between gap-3">
-        <label className="text-[13px] font-medium tracking-wide text-[#10301d]/80 uppercase">
+        <label
+          htmlFor={fieldId}
+          className="text-[13px] font-medium tracking-wide text-[#10301d]/80 uppercase"
+        >
           {label}
         </label>
         <div className="flex items-stretch overflow-hidden rounded-md border border-[#10301d]/15 bg-[#fffdf7] focus-within:border-[#b5893a] focus-within:ring-2 focus-within:ring-[#b5893a]/25">
           <input
+            id={fieldId}
             type="number"
             inputMode="decimal"
             value={shown}
@@ -67,7 +72,7 @@ function Field({
             onChange={e => {
               setDraft(e.target.value)
               const v = Number(e.target.value.replace(/,/g, ''))
-              if (Number.isFinite(v)) onChange(Math.min(v, max))
+              if (Number.isFinite(v)) onChange(clamp(v, min, max))
             }}
             onBlur={commit}
             onKeyDown={e => e.key === 'Enter' && commit()}
@@ -82,6 +87,7 @@ function Field({
       </div>
       <input
         type="range"
+        aria-label={`${label} slider`}
         value={value}
         min={min}
         max={max}
@@ -128,11 +134,13 @@ function Toggle({
 function MoneyField({
   value,
   onChange,
-  width = 'w-32'
+  width = 'w-32',
+  label
 }: {
   value: number
   onChange: (n: number) => void
   width?: string
+  label?: string
 }) {
   const [draft, setDraft] = useState<string | null>(null)
 
@@ -147,6 +155,7 @@ function MoneyField({
       <input
         type="number"
         inputMode="decimal"
+        aria-label={label}
         value={draft ?? value}
         onChange={e => {
           setDraft(e.target.value)
@@ -190,7 +199,11 @@ function TargetField({
         <label className="text-[13px] font-medium tracking-wide text-[#10301d]/80 uppercase">
           {inflateTarget ? 'Target (today’s value)' : 'Target wealth'}
         </label>
-        <MoneyField value={value} onChange={onChange} />
+        <MoneyField
+          value={value}
+          onChange={onChange}
+          label={inflateTarget ? 'Target in today’s value' : 'Target wealth'}
+        />
       </div>
 
       {/* inflation-adjust toggle */}
@@ -227,6 +240,7 @@ function TargetField({
 
       <input
         type="range"
+        aria-label="Target wealth slider"
         value={valueToLogSlider(value)}
         min={0}
         max={1000}
@@ -255,10 +269,11 @@ function LumpSumField({
         <label className="text-[13px] font-medium tracking-wide text-[#10301d]/80 uppercase">
           Existing lump sum
         </label>
-        <MoneyField value={value} onChange={onChange} />
+        <MoneyField value={value} onChange={onChange} label="Existing lump sum" />
       </div>
       <input
         type="range"
+        aria-label="Existing lump sum slider"
         value={valueToLogSlider(value)}
         min={0}
         max={1000}
@@ -388,6 +403,18 @@ export function GoalDetail({
     setShowIconPicker(false)
   }, [])
 
+  // Escape closes whichever transient layer is open (delete modal takes
+  // priority over the icon picker).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (confirmDelete) setConfirmDelete(false)
+      else if (showIconPicker) setShowIconPicker(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [confirmDelete, showIconPicker])
+
   return (
     <main
       className="min-h-screen w-full px-5 py-10 sm:px-8 sm:py-14"
@@ -400,6 +427,7 @@ export function GoalDetail({
         <div className="mb-8 flex flex-wrap items-center gap-3">
           <button
             onClick={onBack}
+            aria-label="Back to all goals"
             className="flex items-center gap-1.5 rounded-full border border-[#10301d]/15 bg-white/60 px-3 py-1.5 text-[13px] text-[#10301d]/60 transition-all hover:border-[#10301d]/30 hover:bg-white/80 hover:text-[#10301d]"
           >
             <svg
@@ -426,11 +454,18 @@ export function GoalDetail({
               onClick={() => setShowIconPicker(v => !v)}
               className="text-3xl leading-none transition-transform hover:scale-110"
               title="Change icon"
+              aria-label="Change icon"
+              aria-haspopup="menu"
+              aria-expanded={showIconPicker}
             >
               {icon}
             </button>
             {showIconPicker && (
-              <div className="absolute top-12 left-0 z-20 flex w-56 flex-wrap gap-2 rounded-xl border border-[#10301d]/10 bg-white p-3 shadow-xl">
+              <div
+                role="menu"
+                aria-label="Choose an icon"
+                className="absolute top-12 left-0 z-20 flex w-56 flex-wrap gap-2 rounded-xl border border-[#10301d]/10 bg-white p-3 shadow-xl"
+              >
                 {GOAL_ICONS.map(ic => (
                   <button
                     key={ic.emoji}
@@ -488,6 +523,7 @@ export function GoalDetail({
           <button
             onClick={() => setConfirmDelete(true)}
             title="Delete goal"
+            aria-label="Delete goal"
             className="ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#10301d]/15 bg-white/60 text-[#10301d]/40 transition-all hover:border-red-300 hover:bg-red-50 hover:text-red-500"
           >
             <svg
@@ -734,7 +770,12 @@ export function GoalDetail({
             if (e.target === e.currentTarget) setConfirmDelete(false)
           }}
         >
-          <div className="w-full max-w-sm rounded-2xl bg-[#fffdf7] p-6 text-center shadow-2xl">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Delete this goal?"
+            className="w-full max-w-sm rounded-2xl bg-[#fffdf7] p-6 text-center shadow-2xl"
+          >
             <p className={`text-xl text-[#10301d] ${displayFont.className}`}>
               Delete this goal?
             </p>

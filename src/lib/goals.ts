@@ -210,9 +210,20 @@ export function loadGoals(): Goal[] {
   }
 }
 
-export function saveGoals(goals: Goal[]): void {
-  if (typeof window === 'undefined') return
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(goals))
+/**
+ * Persist goals to localStorage. Returns `false` (rather than throwing) when
+ * the write fails — e.g. quota exceeded or storage blocked in private mode — so
+ * callers never crash on a failed save and can warn the user instead.
+ */
+export function saveGoals(goals: Goal[]): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(goals))
+    return true
+  } catch (err) {
+    console.warn('Could not save goals to localStorage:', err)
+    return false
+  }
 }
 
 export function clearGoalsStorage(): void {

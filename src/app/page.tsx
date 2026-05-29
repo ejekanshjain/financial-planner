@@ -15,6 +15,7 @@ export default function FinancialPlanner() {
   const [goals, setGoals] = useState<Goal[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
+  const [storageError, setStorageError] = useState(false)
 
   useEffect(() => {
     const stored = loadGoals()
@@ -35,7 +36,9 @@ export default function FinancialPlanner() {
 
   const persist = useCallback((next: Goal[]) => {
     setGoals(next)
-    saveGoals(next)
+    // saveGoals never throws; a false result means the write was rejected
+    // (quota/private mode) so we warn the user their changes won't survive.
+    setStorageError(!saveGoals(next))
   }, [])
 
   const handleAdd = useCallback(
@@ -92,6 +95,7 @@ export default function FinancialPlanner() {
   return (
     <Dashboard
       goals={goals}
+      storageError={storageError}
       onAdd={handleAdd}
       onOpen={setSelectedId}
       onDelete={handleDelete}

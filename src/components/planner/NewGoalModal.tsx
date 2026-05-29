@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Goal,
   GOAL_ICONS,
@@ -31,6 +31,13 @@ export function NewGoalModal({
   // true while `name` holds an auto-filled label from an icon click (not user-typed)
   const [nameIsAuto, setNameIsAuto] = useState(false)
 
+  // Escape closes the modal, matching the backdrop-click behaviour.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   const pickIcon = (ic: { emoji: string; label: string }) => {
     setIcon(ic.emoji)
     // fill the name from the icon when the box is empty or still holds an auto value
@@ -59,12 +66,23 @@ export function NewGoalModal({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="w-full max-w-md rounded-t-3xl bg-[#fffdf7] p-6 shadow-2xl sm:rounded-2xl sm:p-8">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-goal-title"
+        className="w-full max-w-md rounded-t-3xl bg-[#fffdf7] p-6 shadow-2xl sm:rounded-2xl sm:p-8"
+      >
         {/* header */}
         <div className="mb-6 flex items-center justify-between">
-          <h2 className={`text-xl text-[#10301d] ${displayFont.className}`}>New Goal</h2>
+          <h2
+            id="new-goal-title"
+            className={`text-xl text-[#10301d] ${displayFont.className}`}
+          >
+            New Goal
+          </h2>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="flex h-8 w-8 items-center justify-center rounded-full bg-[#10301d]/8 text-[#10301d]/50 transition-colors hover:bg-[#10301d]/15"
           >
             ✕
@@ -123,6 +141,7 @@ export function NewGoalModal({
             <div className="flex items-stretch overflow-hidden rounded-lg border border-[#10301d]/15 bg-white focus-within:border-[#b5893a] focus-within:ring-2 focus-within:ring-[#b5893a]/25">
               <input
                 type="number"
+                aria-label="Target amount"
                 value={targetDraft ?? target}
                 onChange={e => {
                   setTargetDraft(e.target.value)
@@ -159,6 +178,7 @@ export function NewGoalModal({
 
           <input
             type="range"
+            aria-label="Target amount slider"
             value={valueToLogSlider(target)}
             min={0}
             max={1000}
@@ -184,6 +204,7 @@ export function NewGoalModal({
           </div>
           <input
             type="range"
+            aria-label="Years to goal slider"
             value={years}
             min={1}
             max={50}

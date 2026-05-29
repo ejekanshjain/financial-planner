@@ -52,6 +52,7 @@ export function GoalCard({
           <button
             type="button"
             title="Delete goal"
+            aria-label={`Delete ${goal.name}`}
             onClick={e => {
               e.stopPropagation()
               setConfirmDelete(true)
@@ -128,6 +129,8 @@ export function GoalCard({
       {/* delete confirmation overlay */}
       {confirmDelete && (
         <div
+          role="dialog"
+          aria-label={`Delete ${goal.name}?`}
           onClick={e => e.stopPropagation()}
           className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 rounded-2xl bg-[#fffdf7]/95 p-5 text-center backdrop-blur-sm"
         >
