@@ -241,7 +241,7 @@ export function ChatWidget({
               return (
                 <div
                   key={message.id}
-                  className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
+                  className={`group flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
                 >
                   <div
                     className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed ${
@@ -260,6 +260,7 @@ export function ChatWidget({
                       </span>
                     )}
                   </div>
+                  {text && <CopyButton text={text} align={isUser} />}
                 </div>
               )
             })}
@@ -359,5 +360,68 @@ function Dot({ delay = '0s' }: { delay?: string }) {
       className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-[#10301d]/40"
       style={{ animationDelay: delay }}
     />
+  )
+}
+
+/** Copies a message's text; flips to a check for a moment on success. */
+function CopyButton({ text, align }: { text: string; align: boolean }) {
+  const [copied, setCopied] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Clear the pending reset if the bubble unmounts mid-countdown.
+  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), [])
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Clipboard can be blocked (insecure context); fail silently.
+    }
+  }
+
+  return (
+    <button
+      onClick={copy}
+      title={copied ? 'Copied' : 'Copy message'}
+      aria-label={copied ? 'Copied to clipboard' : 'Copy message'}
+      className={`mt-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-[#10301d]/40 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:bg-[#10301d]/8 hover:text-[#10301d]/70 ${
+        align ? 'mr-1' : 'ml-1'
+      }`}
+    >
+      {copied ? (
+        <>
+          <svg
+            className="h-3 w-3"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          Copied
+        </>
+      ) : (
+        <>
+          <svg
+            className="h-3 w-3"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.8}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M8 7v8a2 2 0 002 2h6M8 7a2 2 0 012-2h4.586a1 1 0 01.707.293l2.414 2.414a1 1 0 01.293.707V13a2 2 0 01-2 2M8 7H6a2 2 0 00-2 2v8a2 2 0 002 2h6a2 2 0 002-2v-2"
+            />
+          </svg>
+          Copy
+        </>
+      )}
+    </button>
   )
 }
