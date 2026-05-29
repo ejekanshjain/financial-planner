@@ -12,14 +12,18 @@ const CREAM = '#f4efe2'
 function StatTile({
   label,
   value,
-  sub
+  sub,
+  className = ''
 }: {
   label: string
   value: string
   sub?: string
+  className?: string
 }) {
   return (
-    <div className="rounded-2xl border border-[#10301d]/10 bg-[#fffdf7] p-5 shadow-[0_2px_16px_-8px_rgba(16,48,29,0.15)]">
+    <div
+      className={`rounded-2xl border border-[#10301d]/10 bg-[#fffdf7] p-5 shadow-[0_2px_16px_-8px_rgba(16,48,29,0.15)] ${className}`}
+    >
       <p className="text-[11px] font-semibold tracking-widest text-[#10301d]/45 uppercase">
         {label}
       </p>
@@ -193,11 +197,13 @@ export function Dashboard({
   goals,
   onAdd,
   onOpen,
+  onDelete,
   onClear
 }: {
   goals: Goal[]
   onAdd: (goal: Goal) => void
   onOpen: (id: string) => void
+  onDelete: (id: string) => void
   onClear: () => void
 }) {
   const [showModal, setShowModal] = useState(false)
@@ -305,11 +311,12 @@ export function Dashboard({
         ) : (
           <div className="space-y-8">
             {/* summary stats */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
               <StatTile
                 label="Total monthly SIP"
                 value={inrWords(totalSip)}
                 sub={`across ${goals.length} ${goals.length === 1 ? 'goal' : 'goals'}`}
+                className="col-span-2 sm:col-span-1"
               />
               <StatTile
                 label="Total target wealth"
@@ -345,6 +352,7 @@ export function Dashboard({
                     key={goal.id}
                     goal={goal}
                     onClick={() => onOpen(goal.id)}
+                    onDelete={() => onDelete(goal.id)}
                   />
                 ))}
 

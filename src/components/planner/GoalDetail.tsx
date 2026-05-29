@@ -376,6 +376,27 @@ export function GoalDetail({
               </svg>
             </button>
           )}
+
+          {/* delete goal */}
+          <button
+            onClick={() => setConfirmDelete(true)}
+            title="Delete goal"
+            className="ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#10301d]/15 bg-white/60 text-[#10301d]/40 transition-all hover:border-red-300 hover:bg-red-50 hover:text-red-500"
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.8}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+              />
+            </svg>
+          </button>
         </div>
 
         {/* ── two-column layout ─────────────────────────────── */}
@@ -549,32 +570,12 @@ export function GoalDetail({
 
         {/* ── delete zone ───────────────────────────────────── */}
         <div className="mt-10 flex justify-end">
-          {!confirmDelete ? (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              className="text-[13px] text-[#10301d]/35 transition-colors hover:text-red-400"
-            >
-              Delete this goal
-            </button>
-          ) : (
-            <div className="flex items-center gap-4 rounded-xl border border-red-200 bg-red-50 px-5 py-3">
-              <span className="text-[13px] text-red-700">
-                Delete &ldquo;{name}&rdquo;?
-              </span>
-              <button
-                onClick={onDelete}
-                className="rounded-lg bg-red-500 px-4 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-red-600"
-              >
-                Yes, delete
-              </button>
-              <button
-                onClick={() => setConfirmDelete(false)}
-                className="text-[13px] text-red-600/70 transition-colors hover:text-red-700"
-              >
-                Cancel
-              </button>
-            </div>
-          )}
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="text-[13px] text-[#10301d]/35 transition-colors hover:text-red-400"
+          >
+            Delete this goal
+          </button>
         </div>
 
         <p className="mt-8 text-center text-xs leading-relaxed text-[#10301d]/40">
@@ -583,6 +584,40 @@ export function GoalDetail({
           and are not guaranteed.
         </p>
       </div>
+
+      {/* ── delete confirmation modal ─────────────────────────── */}
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-5 backdrop-blur-sm"
+          onClick={e => {
+            if (e.target === e.currentTarget) setConfirmDelete(false)
+          }}
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-[#fffdf7] p-6 text-center shadow-2xl">
+            <p className={`text-xl text-[#10301d] ${displayFont.className}`}>
+              Delete this goal?
+            </p>
+            <p className="mt-2 text-[14px] leading-relaxed text-[#10301d]/60">
+              &ldquo;{name || 'Untitled Goal'}&rdquo; will be permanently
+              removed. This can&rsquo;t be undone.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="flex-1 rounded-xl bg-[#10301d]/8 py-2.5 text-[14px] font-medium text-[#10301d]/70 transition-colors hover:bg-[#10301d]/15"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={onDelete}
+                className="flex-1 rounded-xl bg-red-500 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-red-600"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

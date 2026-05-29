@@ -28,6 +28,17 @@ export function NewGoalModal({
   const [target, setTarget] = useState(GOAL_DEFAULTS.target)
   const [years, setYears] = useState(GOAL_DEFAULTS.years)
   const [targetDraft, setTargetDraft] = useState<string | null>(null)
+  // true while `name` holds an auto-filled label from an icon click (not user-typed)
+  const [nameIsAuto, setNameIsAuto] = useState(false)
+
+  const pickIcon = (ic: { emoji: string; label: string }) => {
+    setIcon(ic.emoji)
+    // fill the name from the icon when the box is empty or still holds an auto value
+    if (!name.trim() || nameIsAuto) {
+      setName(ic.label)
+      setNameIsAuto(true)
+    }
+  }
 
   const handleCreate = () => {
     if (!name.trim()) return
@@ -69,7 +80,10 @@ export function NewGoalModal({
             type="text"
             placeholder="Dream House, Family Car, World Tour…"
             value={name}
-            onChange={e => setName(e.target.value)}
+            onChange={e => {
+              setName(e.target.value)
+              setNameIsAuto(false)
+            }}
             onKeyDown={e => e.key === 'Enter' && handleCreate()}
             autoFocus
             className="w-full rounded-xl border border-[#10301d]/15 bg-white px-4 py-2.5 text-[15px] text-[#10301d] placeholder:text-[#10301d]/30 outline-none transition focus:border-[#b5893a] focus:ring-2 focus:ring-[#b5893a]/25"
@@ -86,7 +100,7 @@ export function NewGoalModal({
               <button
                 key={ic.emoji}
                 type="button"
-                onClick={() => setIcon(ic.emoji)}
+                onClick={() => pickIcon(ic)}
                 title={ic.label}
                 className={`flex h-10 w-10 items-center justify-center rounded-xl text-xl transition-all ${
                   icon === ic.emoji

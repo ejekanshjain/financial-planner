@@ -66,6 +66,7 @@ export default function FinancialPlanner() {
       goals={goals}
       onAdd={handleAdd}
       onOpen={setSelectedId}
+      onDelete={handleDelete}
       onClear={handleClear}
     />
   )
