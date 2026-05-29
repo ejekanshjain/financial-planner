@@ -6,6 +6,7 @@ import {
   CHART_PALETTE,
   Goal,
   GoalCalc,
+  buildShareUrl,
   calcGoal,
   downloadGoals,
   inrWords,
@@ -264,6 +265,20 @@ export function Dashboard({
     reader.readAsText(file)
   }
 
+  const handleShare = async () => {
+    const url = buildShareUrl(goals)
+    try {
+      await navigator.clipboard.writeText(url)
+      setImportMsg({
+        kind: 'ok',
+        text: 'Share link copied to clipboard. Anyone who opens it gets these goals.'
+      })
+    } catch {
+      // Clipboard can be blocked (e.g. insecure context); fall back to a prompt.
+      window.prompt('Copy your share link:', url)
+    }
+  }
+
   return (
     <main
       className="min-h-screen w-full px-5 py-12 sm:px-8 sm:py-16"
@@ -321,6 +336,29 @@ export function Dashboard({
                 />
               </svg>
             </button>
+
+            {/* share via link */}
+            {hasGoals && (
+              <button
+                onClick={handleShare}
+                title="Copy a shareable link to these goals"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-[#10301d]/20 text-[#10301d]/45 transition-colors hover:border-[#1d4d31]/50 hover:text-[#1d4d31]"
+              >
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={1.8}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                  />
+                </svg>
+              </button>
+            )}
 
             {/* export */}
             {hasGoals && (

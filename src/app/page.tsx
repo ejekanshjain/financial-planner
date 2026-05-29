@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Dashboard } from '~/components/planner/Dashboard'
 import { GoalDetail } from '~/components/planner/GoalDetail'
-import { clearGoalsStorage, Goal, loadGoals, saveGoals } from '~/lib/goals'
+import {
+  clearGoalsStorage,
+  consumeSharedGoals,
+  Goal,
+  loadGoals,
+  saveGoals
+} from '~/lib/goals'
 
 export default function FinancialPlanner() {
   const [goals, setGoals] = useState<Goal[]>([])
@@ -11,8 +17,19 @@ export default function FinancialPlanner() {
   const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {
+    const stored = loadGoals()
+    // A shared link embeds goals in the URL; pull them in (merging by id) and
+    // strip the param from the address bar so a refresh doesn't re-import.
+    const shared = consumeSharedGoals()
+    let next = stored
+    if (shared) {
+      const byId = new Map(stored.map(g => [g.id, g]))
+      shared.forEach(g => byId.set(g.id, g))
+      next = [...byId.values()]
+      saveGoals(next)
+    }
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setGoals(loadGoals())
+    setGoals(next)
     setHydrated(true)
   }, [])
 

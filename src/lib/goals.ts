@@ -292,3 +292,57 @@ export function parseGoalsFile(raw: string): Goal[] {
   }
   return list.map(normalizeGoal)
 }
+
+/* ── share via link ───────────────────────────────────────── */
+const SHARE_PARAM = 'plan'
+
+// btoa/atob only handle Latin-1, but goals contain emoji and non-ASCII names,
+// so round-trip through UTF-8 bytes. The base64url variant keeps the payload
+// safe to drop into a URL without percent-encoding.
+function utf8ToBase64Url(str: string): string {
+  const bytes = new TextEncoder().encode(str)
+  let bin = ''
+  bytes.forEach(b => (bin += String.fromCharCode(b)))
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function base64UrlToUtf8(b64: string): string {
+  const bin = atob(b64.replace(/-/g, '+').replace(/_/g, '/'))
+  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0))
+  return new TextDecoder().decode(bytes)
+}
+
+/**
+ * Build a shareable link to the current page that embeds the given goals as an
+ * encoded query param. Reuses the current `window.location.href` so the link
+ * always points back at wherever the app is hosted.
+ */
+export function buildShareUrl(goals: Goal[]): string {
+  const payload = { app: 'sip-pro', version: EXPORT_VERSION, goals }
+  const url = new URL(window.location.href)
+  url.searchParams.set(SHARE_PARAM, utf8ToBase64Url(JSON.stringify(payload)))
+  return url.toString()
+}
+
+/**
+ * If the current URL carries a shared plan, decode it into goals and strip the
+ * param from the address bar (so a refresh or re-share doesn't re-import).
+ * Returns null when there's nothing to import or the payload is unreadable.
+ */
+export function consumeSharedGoals(): Goal[] | null {
+  if (typeof window === 'undefined') return null
+  const url = new URL(window.location.href)
+  const encoded = url.searchParams.get(SHARE_PARAM)
+  if (!encoded) return null
+
+  // Remove the param regardless of whether decoding succeeds, so a malformed
+  // link doesn't keep trying to import on every load.
+  url.searchParams.delete(SHARE_PARAM)
+  window.history.replaceState({}, '', url.toString())
+
+  try {
+    return parseGoalsFile(base64UrlToUtf8(encoded))
+  } catch {
+    return null
+  }
+}
