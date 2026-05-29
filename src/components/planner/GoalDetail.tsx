@@ -97,13 +97,42 @@ function Field({
   )
 }
 
-/* ── logarithmic target-wealth field ─────────────────────── */
-function TargetField({
-  value,
+/* ── toggle switch ────────────────────────────────────────── */
+function Toggle({
+  checked,
   onChange
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+        checked ? 'bg-[#1d4d31]' : 'bg-[#10301d]/20'
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+          checked ? 'translate-x-4' : ''
+        }`}
+      />
+    </button>
+  )
+}
+
+/* ── logarithmic money field with a log slider (₹0 – ₹100 Cr) ── */
+function MoneyField({
+  value,
+  onChange,
+  width = 'w-32'
 }: {
   value: number
   onChange: (n: number) => void
+  width?: string
 }) {
   const [draft, setDraft] = useState<string | null>(null)
 
@@ -114,29 +143,69 @@ function TargetField({
   }
 
   return (
+    <div className="flex items-stretch overflow-hidden rounded-md border border-[#10301d]/15 bg-[#fffdf7] focus-within:border-[#b5893a] focus-within:ring-2 focus-within:ring-[#b5893a]/25">
+      <input
+        type="number"
+        inputMode="decimal"
+        value={draft ?? value}
+        onChange={e => {
+          setDraft(e.target.value)
+          const v = Number(e.target.value.replace(/,/g, ''))
+          if (Number.isFinite(v)) onChange(clamp(v, 0, MAX_TARGET))
+        }}
+        onBlur={commit}
+        onKeyDown={e => e.key === 'Enter' && commit()}
+        className={`${width} [appearance:textfield] bg-transparent px-3 py-1.5 text-right text-[15px] font-semibold text-[#10301d] tabular-nums outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${displayFont.className}`}
+      />
+      <span className="flex items-center bg-[#10301d]/5 px-2.5 text-[13px] font-medium text-[#10301d]/55">
+        ₹
+      </span>
+    </div>
+  )
+}
+
+/* ── target-wealth field (with optional inflation-adjustment) ── */
+function TargetField({
+  value,
+  onChange,
+  inflateTarget,
+  onToggleInflate,
+  years,
+  inflation
+}: {
+  value: number
+  onChange: (n: number) => void
+  inflateTarget: boolean
+  onToggleInflate: (v: boolean) => void
+  years: number
+  inflation: number
+}) {
+  const nominal = inflateTarget
+    ? value * (1 + inflation / 100) ** years
+    : value
+
+  return (
     <div className="space-y-2.5">
       <div className="flex items-baseline justify-between gap-3">
         <label className="text-[13px] font-medium tracking-wide text-[#10301d]/80 uppercase">
-          Target wealth
+          {inflateTarget ? 'Target (today’s value)' : 'Target wealth'}
         </label>
-        <div className="flex items-stretch overflow-hidden rounded-md border border-[#10301d]/15 bg-[#fffdf7] focus-within:border-[#b5893a] focus-within:ring-2 focus-within:ring-[#b5893a]/25">
-          <input
-            type="number"
-            inputMode="decimal"
-            value={draft ?? value}
-            onChange={e => {
-              setDraft(e.target.value)
-              const v = Number(e.target.value.replace(/,/g, ''))
-              if (Number.isFinite(v)) onChange(Math.min(v, MAX_TARGET))
-            }}
-            onBlur={commit}
-            onKeyDown={e => e.key === 'Enter' && commit()}
-            className={`w-32 [appearance:textfield] bg-transparent px-3 py-1.5 text-right text-[15px] font-semibold text-[#10301d] tabular-nums outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${displayFont.className}`}
-          />
-          <span className="flex items-center bg-[#10301d]/5 px-2.5 text-[13px] font-medium text-[#10301d]/55">
-            ₹
-          </span>
+        <MoneyField value={value} onChange={onChange} />
+      </div>
+
+      {/* inflation-adjust toggle */}
+      <div className="flex items-center justify-between gap-3 rounded-lg bg-[#10301d]/4 px-3 py-2">
+        <div className="min-w-0">
+          <p className="text-[12px] font-medium text-[#10301d]/75">
+            Adjust target for inflation
+          </p>
+          <p className="text-[11px] text-[#10301d]/45">
+            {inflateTarget
+              ? `Need ${inrWords(nominal)} in ${years} yrs to match today’s ${inrWords(value)}`
+              : 'Enter the amount in today’s money instead'}
+          </p>
         </div>
+        <Toggle checked={inflateTarget} onChange={onToggleInflate} />
       </div>
 
       <div className="flex flex-wrap gap-1.5">
@@ -144,10 +213,7 @@ function TargetField({
           <button
             key={p.label}
             type="button"
-            onClick={() => {
-              onChange(p.value)
-              setDraft(null)
-            }}
+            onClick={() => onChange(p.value)}
             className={`rounded px-2 py-0.5 text-[11px] font-semibold transition-colors ${
               value === p.value
                 ? 'bg-[#1d4d31] text-[#f4efe2]'
@@ -165,14 +231,45 @@ function TargetField({
         min={0}
         max={1000}
         step={1}
-        onChange={e => {
-          onChange(logSliderToValue(Number(e.target.value)))
-          setDraft(null)
-        }}
+        onChange={e => onChange(logSliderToValue(Number(e.target.value)))}
         className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#10301d]/12 accent-[#1d4d31] outline-none"
       />
       <p className="text-xs text-[#10301d]/45">
         {inrWords(value)} · slider up to ₹100 Cr
+      </p>
+    </div>
+  )
+}
+
+/* ── lump-sum field ───────────────────────────────────────── */
+function LumpSumField({
+  value,
+  onChange
+}: {
+  value: number
+  onChange: (n: number) => void
+}) {
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <label className="text-[13px] font-medium tracking-wide text-[#10301d]/80 uppercase">
+          Existing lump sum
+        </label>
+        <MoneyField value={value} onChange={onChange} />
+      </div>
+      <input
+        type="range"
+        value={valueToLogSlider(value)}
+        min={0}
+        max={1000}
+        step={1}
+        onChange={e => onChange(logSliderToValue(Number(e.target.value)))}
+        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#10301d]/12 accent-[#1d4d31] outline-none"
+      />
+      <p className="text-xs text-[#10301d]/45">
+        {value > 0
+          ? `${inrWords(value)} invested today, growing with this goal`
+          : 'A one-time amount you’ve already invested (optional)'}
       </p>
     </div>
   )
@@ -211,6 +308,8 @@ export function GoalDetail({
   const [annualReturn, setAnnualReturn] = useState(goal.annualReturn)
   const [stepUp, setStepUp] = useState(goal.stepUp)
   const [inflation, setInflation] = useState(goal.inflation)
+  const [lumpSum, setLumpSum] = useState(goal.lumpSum)
+  const [inflateTarget, setInflateTarget] = useState(goal.inflateTarget)
   const [showIconPicker, setShowIconPicker] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [editingName, setEditingName] = useState(false)
@@ -235,7 +334,9 @@ export function GoalDetail({
       years,
       annualReturn,
       stepUp,
-      inflation
+      inflation,
+      lumpSum,
+      inflateTarget
     })
   }, [
     name,
@@ -245,6 +346,8 @@ export function GoalDetail({
     annualReturn,
     stepUp,
     inflation,
+    lumpSum,
+    inflateTarget,
     goal.id,
     goal.createdAt
   ])
@@ -259,7 +362,9 @@ export function GoalDetail({
       years,
       annualReturn,
       stepUp,
-      inflation
+      inflation,
+      lumpSum,
+      inflateTarget
     }),
     [
       goal.id,
@@ -270,7 +375,9 @@ export function GoalDetail({
       years,
       annualReturn,
       stepUp,
-      inflation
+      inflation,
+      lumpSum,
+      inflateTarget
     ]
   )
   const calc = useMemo(() => calcGoal(currentGoal), [currentGoal])
@@ -409,7 +516,15 @@ export function GoalDetail({
               Your plan
             </h2>
             <div className="space-y-7">
-              <TargetField value={target} onChange={setTarget} />
+              <TargetField
+                value={target}
+                onChange={setTarget}
+                inflateTarget={inflateTarget}
+                onToggleInflate={setInflateTarget}
+                years={years}
+                inflation={inflation}
+              />
+              <LumpSumField value={lumpSum} onChange={setLumpSum} />
               <Field
                 label="Years to goal"
                 value={years}
@@ -462,24 +577,50 @@ export function GoalDetail({
               }}
             >
               <p className="text-[11px] font-semibold tracking-[0.25em] text-[#f4efe2]/60 uppercase">
-                Start investing every month
+                {calc.monthlySip > 0
+                  ? 'Start investing every month'
+                  : 'Your lump sum already covers this'}
               </p>
               <p
                 className={`mt-2 text-5xl leading-none tracking-tight text-[#f4efe2] sm:text-6xl ${displayFont.className}`}
               >
                 {inr(calc.monthlySip)}
               </p>
-              <p className="mt-2 text-sm text-[#f4efe2]/70">
-                {inrWords(calc.monthlySip)} per month, then{' '}
-                <span className="font-semibold text-[#d8b877]">+{stepUp}%</span>{' '}
-                a year for {years} years.
-              </p>
+              {calc.monthlySip > 0 ? (
+                <p className="mt-2 text-sm text-[#f4efe2]/70">
+                  {inrWords(calc.monthlySip)} per month, then{' '}
+                  <span className="font-semibold text-[#d8b877]">
+                    +{stepUp}%
+                  </span>{' '}
+                  a year for {years} years
+                  {lumpSum > 0 && (
+                    <>
+                      , on top of your{' '}
+                      <span className="font-semibold text-[#d8b877]">
+                        {inrWords(lumpSum)}
+                      </span>{' '}
+                      lump sum
+                    </>
+                  )}
+                  .
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-[#f4efe2]/70">
+                  Your {inrWords(lumpSum)} lump sum grows to{' '}
+                  <span className="font-semibold text-[#d8b877]">
+                    {inrWords(calc.lumpFutureValue)}
+                  </span>{' '}
+                  in {years} years — no monthly SIP needed.
+                </p>
+              )}
               <div className="mt-7 grid grid-cols-3 gap-4 border-t border-[#f4efe2]/12 pt-6">
                 <Stat label="Total invested" value={inrWords(calc.invested)} />
                 <Stat label="Wealth gained" value={inrWords(calc.gain)} />
                 <Stat
-                  label={`SIP in yr ${years}`}
-                  value={inrWords(calc.lastYearMonthly)}
+                  label={lumpSum > 0 ? 'Lump sum grows to' : `SIP in yr ${years}`}
+                  value={inrWords(
+                    lumpSum > 0 ? calc.lumpFutureValue : calc.lastYearMonthly
+                  )}
                 />
               </div>
             </div>
@@ -500,7 +641,7 @@ export function GoalDetail({
                 {inr(calc.todayValue)}
               </p>
               <p className="mt-2 text-sm leading-relaxed text-[#10301d]/60">
-                {inrWords(target)} in {years} years buys what{' '}
+                {inrWords(calc.nominalTarget)} in {years} years buys what{' '}
                 <span className="font-semibold text-[#10301d]">
                   {inrWords(calc.todayValue)}
                 </span>{' '}

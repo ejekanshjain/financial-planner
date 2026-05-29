@@ -45,6 +45,17 @@ export default function FinancialPlanner() {
     setSelectedId(null)
   }, [])
 
+  // Merge imported goals by id: existing ids are overwritten, new ones appended,
+  // which keeps re-importing the same file idempotent.
+  const handleImport = useCallback(
+    (imported: Goal[]) => {
+      const byId = new Map(goals.map(g => [g.id, g]))
+      imported.forEach(g => byId.set(g.id, g))
+      persist([...byId.values()])
+    },
+    [goals, persist]
+  )
+
   if (!hydrated) return null
 
   const selected = goals.find(g => g.id === selectedId) ?? null
@@ -68,6 +79,7 @@ export default function FinancialPlanner() {
       onOpen={setSelectedId}
       onDelete={handleDelete}
       onClear={handleClear}
+      onImport={handleImport}
     />
   )
 }

@@ -15,7 +15,9 @@ export function GoalCard({
 }) {
   const calc = useMemo(() => calcGoal(goal), [goal])
   const investedPct =
-    goal.target > 0 ? Math.min(100, (calc.invested / goal.target) * 100) : 0
+    calc.nominalTarget > 0
+      ? Math.min(100, (calc.invested / calc.nominalTarget) * 100)
+      : 0
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   return (
@@ -94,7 +96,7 @@ export function GoalCard({
           <p
             className={`mt-0.5 text-[22px] leading-none text-[#10301d] ${displayFont.className}`}
           >
-            {inrWords(goal.target)}
+            {inrWords(calc.nominalTarget)}
           </p>
         </div>
         <div>

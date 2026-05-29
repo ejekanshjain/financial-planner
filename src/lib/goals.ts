@@ -5,15 +5,28 @@ export interface Goal {
   id: string
   name: string
   icon: string
+  /**
+   * The amount the user typed for "target wealth". When `inflateTarget` is
+   * false this is the nominal future value; when true it is today's
+   * purchasing power and the real (nominal) target is grown by inflation.
+   */
   target: number
   years: number
   annualReturn: number
   stepUp: number
   inflation: number
+  /** One-time amount already invested today; grows with the goal. */
+  lumpSum: number
+  /** When true, `target` is in today's money and is inflated to the horizon. */
+  inflateTarget: boolean
   createdAt: number
 }
 
 export interface GoalCalc {
+  /** Nominal future value the plan is solving for (after any inflation grossing-up). */
+  nominalTarget: number
+  /** Future value of the lump sum alone at the horizon. */
+  lumpFutureValue: number
   monthlySip: number
   invested: number
   gain: number
@@ -33,7 +46,7 @@ export const GOAL_ICONS = [
   { emoji: '🎓', label: 'Degree' },
   { emoji: '🏢', label: 'Business' },
   { emoji: '💊', label: 'Healthcare' },
-  { emoji: '🎯', label: 'Other' },
+  { emoji: '🎯', label: 'Other' }
 ]
 
 export const GOAL_DEFAULTS = {
@@ -42,6 +55,8 @@ export const GOAL_DEFAULTS = {
   annualReturn: 12,
   stepUp: 10,
   inflation: 6,
+  lumpSum: 0,
+  inflateTarget: false
 }
 
 export const TARGET_PRESETS = [
@@ -51,7 +66,7 @@ export const TARGET_PRESETS = [
   { label: '5 Cr', value: 5 * CRORE },
   { label: '10 Cr', value: 10 * CRORE },
   { label: '25 Cr', value: 25 * CRORE },
-  { label: '50 Cr', value: 50 * CRORE },
+  { label: '50 Cr', value: 50 * CRORE }
 ]
 
 export const CHART_PALETTE = [
@@ -62,7 +77,7 @@ export const CHART_PALETTE = [
   '#2e5d7b',
   '#6b3a8b',
   '#8b3a3a',
-  '#2d7a5a',
+  '#2d7a5a'
 ]
 
 export function makeGoal(
@@ -76,15 +91,26 @@ export function makeGoal(
     icon,
     createdAt: Date.now(),
     ...GOAL_DEFAULTS,
-    ...overrides,
+    ...overrides
   }
 }
 
 export function calcGoal(goal: Goal): GoalCalc {
-  const { target, years, annualReturn, stepUp, inflation } = goal
+  const { target, years, annualReturn, stepUp, inflation, inflateTarget } = goal
+  const lumpSum = Math.max(0, goal.lumpSum ?? 0)
   const monthlyRate = annualReturn / 100 / 12
   const stepFactor = 1 + stepUp / 100
   const months = Math.max(1, Math.round(years * 12))
+
+  // When the target is expressed in today's money, gross it up to the horizon.
+  const nominalTarget = inflateTarget
+    ? target * (1 + inflation / 100) ** years
+    : target
+
+  // The lump sum compounds for the full horizon and covers part of the target;
+  // the SIP only has to fund whatever remains.
+  const lumpFutureValue = lumpSum * (1 + monthlyRate) ** months
+  const remaining = Math.max(0, nominalTarget - lumpFutureValue)
 
   let factor = 0
   for (let m = 1; m <= months; m++) {
@@ -92,10 +118,10 @@ export function calcGoal(goal: Goal): GoalCalc {
     factor = (factor + stepFactor ** yearIdx) * (1 + monthlyRate)
   }
 
-  const monthlySip = factor > 0 ? target / factor : 0
+  const monthlySip = factor > 0 ? remaining / factor : 0
 
-  let bal = 0
-  let invested = 0
+  let bal = lumpSum
+  let invested = lumpSum
   const series: { year: number; invested: number; value: number }[] = []
   for (let m = 1; m <= months; m++) {
     const yearIdx = Math.floor((m - 1) / 12)
@@ -107,11 +133,25 @@ export function calcGoal(goal: Goal): GoalCalc {
   }
 
   const lastYearMonthly = monthlySip * stepFactor ** Math.max(0, years - 1)
-  const gain = target - invested
-  const todayValue = target / (1 + inflation / 100) ** years
-  const erodedPct = target > 0 ? (1 - todayValue / target) * 100 : 0
+  // When a lump sum alone overshoots the target, the plan ends at `bal`
+  // (which exceeds nominalTarget), so base the gain on the actual final value.
+  const finalValue = Math.max(nominalTarget, bal)
+  const gain = finalValue - invested
+  const todayValue = nominalTarget / (1 + inflation / 100) ** years
+  const erodedPct =
+    nominalTarget > 0 ? (1 - todayValue / nominalTarget) * 100 : 0
 
-  return { monthlySip, invested, gain, lastYearMonthly, todayValue, erodedPct, series }
+  return {
+    nominalTarget,
+    lumpFutureValue,
+    monthlySip,
+    invested,
+    gain,
+    lastYearMonthly,
+    todayValue,
+    erodedPct,
+    series
+  }
 }
 
 /* ── log-scale slider (0-1000 ↔ 0 to MAX_TARGET) ─────────── */
@@ -131,7 +171,10 @@ export function valueToLogSlider(value: number): number {
   if (value <= 0) return 0
   const lo = Math.log10(LOG_MIN)
   const hi = Math.log10(LOG_MAX)
-  return 1 + Math.round(((Math.log10(Math.max(LOG_MIN, value)) - lo) / (hi - lo)) * 999)
+  return (
+    1 +
+    Math.round(((Math.log10(Math.max(LOG_MIN, value)) - lo) / (hi - lo)) * 999)
+  )
 }
 
 /* ── formatters ───────────────────────────────────────────── */
@@ -160,7 +203,8 @@ export function loadGoals(): Goal[] {
   if (typeof window === 'undefined') return []
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.map(normalizeGoal) : []
   } catch {
     return []
   }
@@ -174,4 +218,77 @@ export function saveGoals(goals: Goal[]): void {
 export function clearGoalsStorage(): void {
   if (typeof window === 'undefined') return
   localStorage.removeItem(STORAGE_KEY)
+}
+
+/* ── import / export ──────────────────────────────────────── */
+const clamp = (n: number, lo: number, hi: number) =>
+  Math.min(hi, Math.max(lo, n))
+
+const num = (v: unknown, fallback: number) => {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : fallback
+}
+
+/** Coerce an untrusted object into a valid Goal, filling/clamping every field. */
+function normalizeGoal(raw: unknown): Goal {
+  const g = (raw ?? {}) as Record<string, unknown>
+  const name =
+    typeof g.name === 'string' && g.name.trim() ? g.name : 'Untitled Goal'
+  return {
+    id: typeof g.id === 'string' && g.id ? g.id : crypto.randomUUID(),
+    name,
+    icon: typeof g.icon === 'string' && g.icon ? g.icon : '🎯',
+    target: clamp(num(g.target, GOAL_DEFAULTS.target), 0, MAX_TARGET),
+    years: clamp(Math.round(num(g.years, GOAL_DEFAULTS.years)), 1, 50),
+    annualReturn: clamp(num(g.annualReturn, GOAL_DEFAULTS.annualReturn), 1, 30),
+    stepUp: clamp(num(g.stepUp, GOAL_DEFAULTS.stepUp), 0, 50),
+    inflation: clamp(num(g.inflation, GOAL_DEFAULTS.inflation), 0, 15),
+    lumpSum: clamp(num(g.lumpSum, 0), 0, MAX_TARGET),
+    inflateTarget: Boolean(g.inflateTarget),
+    createdAt: num(g.createdAt, Date.now())
+  }
+}
+
+const EXPORT_VERSION = 1
+
+/** Trigger a download of all goals as a JSON file. */
+export function downloadGoals(goals: Goal[]): void {
+  if (typeof window === 'undefined') return
+  const payload = {
+    app: 'sip-pro',
+    version: EXPORT_VERSION,
+    exportedAt: new Date().toISOString(),
+    goals
+  }
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: 'application/json'
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `sip-pro-goals-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/**
+ * Parse the contents of an exported file into a list of valid goals.
+ * Accepts either a bare array of goals or the wrapped `{ goals: [...] }` shape.
+ * Throws a user-friendly Error when the file cannot be understood.
+ */
+export function parseGoalsFile(raw: string): Goal[] {
+  let data: unknown
+  try {
+    data = JSON.parse(raw)
+  } catch {
+    throw new Error('That file isn’t valid JSON.')
+  }
+  const list = Array.isArray(data) ? data : (data as { goals?: unknown })?.goals
+  if (!Array.isArray(list)) {
+    throw new Error('No goals found in this file.')
+  }
+  if (list.length === 0) {
+    throw new Error('This file contains no goals.')
+  }
+  return list.map(normalizeGoal)
 }

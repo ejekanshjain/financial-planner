@@ -1,8 +1,16 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useRef, useMemo, useState } from 'react'
 import { displayFont } from '~/lib/fonts'
-import { CHART_PALETTE, Goal, GoalCalc, calcGoal, inrWords } from '~/lib/goals'
+import {
+  CHART_PALETTE,
+  Goal,
+  GoalCalc,
+  calcGoal,
+  downloadGoals,
+  inrWords,
+  parseGoalsFile,
+} from '~/lib/goals'
 import { GoalCard } from './GoalCard'
 import { NewGoalModal } from './NewGoalModal'
 
@@ -198,16 +206,23 @@ export function Dashboard({
   onAdd,
   onOpen,
   onDelete,
-  onClear
+  onClear,
+  onImport
 }: {
   goals: Goal[]
   onAdd: (goal: Goal) => void
   onOpen: (id: string) => void
   onDelete: (id: string) => void
   onClear: () => void
+  onImport: (goals: Goal[]) => void
 }) {
   const [showModal, setShowModal] = useState(false)
   const [showClear, setShowClear] = useState(false)
+  const [importMsg, setImportMsg] = useState<{
+    kind: 'ok' | 'err'
+    text: string
+  } | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const pairs = useMemo<GoalPair[]>(
     () =>
@@ -219,10 +234,35 @@ export function Dashboard({
     [goals]
   )
   const totalSip = pairs.reduce((s, p) => s + p.calc.monthlySip, 0)
-  const totalTarget = goals.reduce((s, g) => s + g.target, 0)
+  const totalTarget = pairs.reduce((s, p) => s + p.calc.nominalTarget, 0)
   const maxYears = goals.length ? Math.max(...goals.map(g => g.years)) : 0
 
   const hasGoals = goals.length > 0
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-importing the same file
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const imported = parseGoalsFile(String(reader.result))
+        onImport(imported)
+        setImportMsg({
+          kind: 'ok',
+          text: `Imported ${imported.length} ${imported.length === 1 ? 'goal' : 'goals'}.`
+        })
+      } catch (err) {
+        setImportMsg({
+          kind: 'err',
+          text: err instanceof Error ? err.message : 'Could not read that file.'
+        })
+      }
+    }
+    reader.onerror = () =>
+      setImportMsg({ kind: 'err', text: 'Could not read that file.' })
+    reader.readAsText(file)
+  }
 
   return (
     <main
@@ -253,6 +293,58 @@ export function Dashboard({
           </div>
 
           <div className="flex items-center gap-2 pt-1">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json,.json"
+              onChange={handleFile}
+              className="hidden"
+            />
+
+            {/* import */}
+            <button
+              onClick={() => fileRef.current?.click()}
+              title="Import goals from a JSON file"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-[#10301d]/20 text-[#10301d]/45 transition-colors hover:border-[#1d4d31]/50 hover:text-[#1d4d31]"
+            >
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.8}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4"
+                />
+              </svg>
+            </button>
+
+            {/* export */}
+            {hasGoals && (
+              <button
+                onClick={() => downloadGoals(goals)}
+                title="Export goals to a JSON file"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-[#10301d]/20 text-[#10301d]/45 transition-colors hover:border-[#1d4d31]/50 hover:text-[#1d4d31]"
+              >
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={1.8}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 16V4m0 0l-4 4m4-4l4 4"
+                  />
+                </svg>
+              </button>
+            )}
+
             {hasGoals && (
               <div className="relative">
                 <button
@@ -304,6 +396,25 @@ export function Dashboard({
             </button>
           </div>
         </header>
+
+        {/* ── import status banner ─────────────────────────── */}
+        {importMsg && (
+          <div
+            className={`mb-6 flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-[13px] ${
+              importMsg.kind === 'ok'
+                ? 'border-[#1d4d31]/25 bg-[#1d4d31]/8 text-[#10301d]'
+                : 'border-red-300 bg-red-50 text-red-600'
+            }`}
+          >
+            <span>{importMsg.text}</span>
+            <button
+              onClick={() => setImportMsg(null)}
+              className="shrink-0 rounded-full px-2 py-0.5 text-current/60 transition-colors hover:bg-black/5"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* ── content ──────────────────────────────────────── */}
         {!hasGoals ? (
