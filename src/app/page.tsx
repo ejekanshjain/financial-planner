@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { ChatWidget } from '~/components/chat/ChatWidget'
 import { Dashboard } from '~/components/planner/Dashboard'
 import { GoalDetail } from '~/components/planner/GoalDetail'
 import {
@@ -16,6 +17,8 @@ export default function FinancialPlanner() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const [storageError, setStorageError] = useState(false)
+  // Bumped whenever the user clears all data, so the chat widget wipes itself.
+  const [clearSignal, setClearSignal] = useState(0)
 
   useEffect(() => {
     const stored = loadGoals()
@@ -63,6 +66,7 @@ export default function FinancialPlanner() {
     clearGoalsStorage()
     setGoals([])
     setSelectedId(null)
+    setClearSignal(n => n + 1)
   }, [])
 
   // Merge imported goals by id: existing ids are overwritten, new ones appended,
@@ -80,27 +84,28 @@ export default function FinancialPlanner() {
 
   const selected = goals.find(g => g.id === selectedId) ?? null
 
-  if (selected) {
-    return (
-      <GoalDetail
-        key={selected.id}
-        goal={selected}
-        onUpdate={handleUpdate}
-        onDelete={() => handleDelete(selected.id)}
-        onBack={() => setSelectedId(null)}
-      />
-    )
-  }
-
   return (
-    <Dashboard
-      goals={goals}
-      storageError={storageError}
-      onAdd={handleAdd}
-      onOpen={setSelectedId}
-      onDelete={handleDelete}
-      onClear={handleClear}
-      onImport={handleImport}
-    />
+    <>
+      {selected ? (
+        <GoalDetail
+          key={selected.id}
+          goal={selected}
+          onUpdate={handleUpdate}
+          onDelete={() => handleDelete(selected.id)}
+          onBack={() => setSelectedId(null)}
+        />
+      ) : (
+        <Dashboard
+          goals={goals}
+          storageError={storageError}
+          onAdd={handleAdd}
+          onOpen={setSelectedId}
+          onDelete={handleDelete}
+          onClear={handleClear}
+          onImport={handleImport}
+        />
+      )}
+      <ChatWidget goals={goals} clearSignal={clearSignal} />
+    </>
   )
 }
