@@ -288,7 +288,7 @@ export function Dashboard({
     >
       <div className="mx-auto max-w-5xl">
         {/* ── header ───────────────────────────────────────── */}
-        <header className="mb-10 flex items-start justify-between gap-4">
+        <header className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="mb-3 flex items-center gap-2 text-xs font-semibold tracking-[0.3em] text-[#b5893a] uppercase">
               <span className="h-px w-8 bg-[#b5893a]" />
@@ -307,7 +307,7 @@ export function Dashboard({
             )}
           </div>
 
-          <div className="flex items-center gap-2 pt-1">
+          <div className="flex flex-wrap items-center gap-2 sm:pt-1">
             <input
               ref={fileRef}
               type="file"
@@ -332,7 +332,7 @@ export function Dashboard({
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4"
+                  d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 16V4m0 0l-4 4m4-4l4 4"
                 />
               </svg>
             </button>
@@ -377,7 +377,7 @@ export function Dashboard({
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 16V4m0 0l-4 4m4-4l4 4"
+                    d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4"
                   />
                 </svg>
               </button>
