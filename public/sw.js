@@ -4,17 +4,20 @@
  * calculator works with no network. The AI chat (/api/*) always needs the
  * network and is intentionally never cached. */
 
-const VERSION = 'v1'
+const VERSION = 'v2'
 const CACHE = `fin-planner-${VERSION}`
 
-// Minimal shell to pre-cache so the app opens offline on a cold start.
+// Minimal shell to pre-cache so the app opens offline on a cold start. The PDF
+// fonts are included so the very first plan export also works fully offline.
 const PRECACHE = [
   '/',
   '/manifest.webmanifest',
   '/icon.svg',
   '/icon-192.png',
   '/icon-512.png',
-  '/favicon.ico'
+  '/favicon.ico',
+  '/fonts/NotoSans-Regular.ttf',
+  '/fonts/NotoSans-Bold.ttf'
 ]
 
 self.addEventListener('install', event => {
@@ -23,8 +26,15 @@ self.addEventListener('install', event => {
       .open(CACHE)
       // Pre-cache best-effort: a single 404/redirect shouldn't abort install.
       .then(cache => cache.addAll(PRECACHE).catch(() => {}))
-      .then(() => self.skipWaiting())
   )
+  // Note: we deliberately do NOT call skipWaiting() here. On an update the new
+  // worker waits so the page can prompt the user; it activates only when the
+  // client posts SKIP_WAITING (see the message handler below).
+})
+
+// The update toast asks the waiting worker to take over on the user's command.
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting()
 })
 
 self.addEventListener('activate', event => {
