@@ -189,7 +189,8 @@ export function inr(n: number) {
 
 export function inrWords(n: number) {
   if (!Number.isFinite(n)) return '₹0'
-  const trim = (v: number) => v.toFixed(2).replace(/\.00$/, '')
+  // Two decimals, then drop any trailing zeros (and a now-bare dot): 1.50 → 1.5, 1.00 → 1.
+  const trim = (v: number) => v.toFixed(2).replace(/\.?0+$/, '')
   if (n >= CRORE) return `₹${trim(n / CRORE)} Cr`
   if (n >= 1e5) return `₹${trim(n / 1e5)} L`
   if (n >= 1e3) return `₹${trim(n / 1e3)} K`
