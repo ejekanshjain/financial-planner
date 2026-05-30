@@ -2,7 +2,7 @@ import type { UIMessage } from 'ai'
 import { calcGoal, Goal, inr, inrWords } from './goals'
 
 /* ── localStorage persistence ─────────────────────────────── */
-const CHAT_STORAGE_KEY = 'sip-pro-chat'
+const CHAT_STORAGE_KEY = 'financial-planner-chat'
 
 export function loadChat(): UIMessage[] {
   if (typeof window === 'undefined') return []

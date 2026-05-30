@@ -250,7 +250,7 @@ export function inrWords(n: number) {
 }
 
 /* ── localStorage ─────────────────────────────────────────── */
-const STORAGE_KEY = 'sip-pro-goals'
+const STORAGE_KEY = 'financial-planner-goals'
 
 export function loadGoals(): Goal[] {
   if (typeof window === 'undefined') return []
@@ -322,7 +322,7 @@ const EXPORT_VERSION = 1
 export function downloadGoals(goals: Goal[]): void {
   if (typeof window === 'undefined') return
   const payload = {
-    app: 'sip-pro',
+    app: 'financial-planner',
     version: EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     goals
@@ -333,7 +333,7 @@ export function downloadGoals(goals: Goal[]): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `sip-pro-goals-${new Date().toISOString().slice(0, 10)}.json`
+  a.download = `financial-planner-goals-${new Date().toISOString().slice(0, 10)}.json`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -385,7 +385,7 @@ function base64UrlToUtf8(b64: string): string {
  * always points back at wherever the app is hosted.
  */
 export function buildShareUrl(goals: Goal[]): string {
-  const payload = { app: 'sip-pro', version: EXPORT_VERSION, goals }
+  const payload = { app: 'financial-planner', version: EXPORT_VERSION, goals }
   const url = new URL(window.location.href)
   url.searchParams.set(SHARE_PARAM, utf8ToBase64Url(JSON.stringify(payload)))
   return url.toString()
