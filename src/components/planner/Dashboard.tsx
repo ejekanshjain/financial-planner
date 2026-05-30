@@ -242,6 +242,7 @@ export function Dashboard({
 }) {
   const [showModal, setShowModal] = useState(false)
   const [showClear, setShowClear] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
   const [importMsg, setImportMsg] = useState<{
     kind: 'ok' | 'err'
     text: string
@@ -286,6 +287,23 @@ export function Dashboard({
     reader.onerror = () =>
       setImportMsg({ kind: 'err', text: 'Could not read that file.' })
     reader.readAsText(file)
+  }
+
+  // react-pdf is loaded only on demand so it never weighs down the dashboard.
+  const handleExportPdf = async () => {
+    setPdfBusy(true)
+    try {
+      const { downloadGoalsPdf } = await import('~/lib/goalPdf')
+      await downloadGoalsPdf(goals)
+    } catch (err) {
+      console.error('Could not generate the plan PDF:', err)
+      setImportMsg({
+        kind: 'err',
+        text: 'Could not generate the PDF. Please try again.'
+      })
+    } finally {
+      setPdfBusy(false)
+    }
   }
 
   const handleShare = async () => {
@@ -385,7 +403,7 @@ export function Dashboard({
               </button>
             )}
 
-            {/* export */}
+            {/* export JSON */}
             {hasGoals && (
               <button
                 onClick={() => downloadGoals(goals)}
@@ -406,6 +424,32 @@ export function Dashboard({
                     d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4"
                   />
                 </svg>
+              </button>
+            )}
+
+            {/* export PDF (all goals) */}
+            {hasGoals && (
+              <button
+                onClick={handleExportPdf}
+                disabled={pdfBusy}
+                title="Download all goals & plans as a PDF"
+                aria-label="Download all goals and plans as a PDF"
+                className="flex items-center gap-1.5 rounded-full border border-[#10301d]/20 px-3 py-2 text-[12px] font-medium text-[#10301d]/55 transition-colors hover:border-[#1d4d31]/50 hover:text-[#1d4d31] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={1.8}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 10v6m0 0l-2.5-2.5M12 16l2.5-2.5M4 6a2 2 0 012-2h7l5 5v9a2 2 0 01-2 2H6a2 2 0 01-2-2V6z"
+                  />
+                </svg>
+                {pdfBusy ? 'Preparing…' : 'PDF'}
               </button>
             )}
 

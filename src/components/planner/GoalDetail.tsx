@@ -465,6 +465,8 @@ export function GoalDetail({
   const [showIconPicker, setShowIconPicker] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [editingName, setEditingName] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState(false)
 
   // stable ref to latest onUpdate
   const onUpdateRef = useRef(onUpdate)
@@ -547,6 +549,22 @@ export function GoalDetail({
     setIcon(emoji)
     setShowIconPicker(false)
   }, [])
+
+  // The PDF generator (and react-pdf) is loaded only when the user exports, so
+  // it never weighs down the initial bundle.
+  const handleExport = useCallback(async () => {
+    setExporting(true)
+    setExportError(false)
+    try {
+      const { downloadGoalPdf } = await import('~/lib/goalPdf')
+      await downloadGoalPdf(currentGoal)
+    } catch (err) {
+      console.error('Could not generate the plan PDF:', err)
+      setExportError(true)
+    } finally {
+      setExporting(false)
+    }
+  }, [currentGoal])
 
   // Escape closes whichever transient layer is open (delete modal takes
   // priority over the icon picker).
@@ -664,12 +682,36 @@ export function GoalDetail({
             </button>
           )}
 
+          {/* export PDF */}
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            title="Download this plan as a PDF"
+            aria-label="Export plan as PDF"
+            className="ml-auto flex items-center gap-1.5 rounded-full border border-[#10301d]/15 bg-white/60 px-3 py-1.5 text-[13px] text-[#10301d]/60 transition-all hover:border-[#1d4d31]/40 hover:bg-white/80 hover:text-[#1d4d31] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <svg
+              className="h-3.5 w-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 10v6m0 0l-2.5-2.5M12 16l2.5-2.5M4 6a2 2 0 012-2h7l5 5v9a2 2 0 01-2 2H6a2 2 0 01-2-2V6z"
+              />
+            </svg>
+            {exporting ? 'Preparing…' : 'Export PDF'}
+          </button>
+
           {/* delete goal */}
           <button
             onClick={() => setConfirmDelete(true)}
             title="Delete goal"
             aria-label="Delete goal"
-            className="ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#10301d]/15 bg-white/60 text-[#10301d]/40 transition-all hover:border-red-300 hover:bg-red-50 hover:text-red-500"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#10301d]/15 bg-white/60 text-[#10301d]/40 transition-all hover:border-red-300 hover:bg-red-50 hover:text-red-500"
           >
             <svg
               className="h-4 w-4"
@@ -686,6 +728,12 @@ export function GoalDetail({
             </svg>
           </button>
         </div>
+
+        {exportError && (
+          <p className="mb-6 rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-600">
+            Couldn’t generate the PDF. Please try again.
+          </p>
+        )}
 
         {/* ── two-column layout ─────────────────────────────── */}
         <div className="grid gap-6 lg:grid-cols-2">
