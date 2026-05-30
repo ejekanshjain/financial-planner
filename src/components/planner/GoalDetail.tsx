@@ -6,10 +6,14 @@ import {
   calcGoal,
   Goal,
   GOAL_ICONS,
+  GoalMode,
   inr,
   inrWords,
   logSliderToValue,
+  MAX_SIP,
   MAX_TARGET,
+  SIP_PRESETS,
+  SIP_SLIDER_MAX,
   TARGET_PRESETS,
   valueToLogSlider
 } from '~/lib/goals'
@@ -255,6 +259,137 @@ function TargetField({
   )
 }
 
+/* ── plan-mode segmented toggle ───────────────────────────── */
+function ModeToggle({
+  mode,
+  onChange
+}: {
+  mode: GoalMode
+  onChange: (m: GoalMode) => void
+}) {
+  const options: { value: GoalMode; label: string; hint: string }[] = [
+    { value: 'target', label: 'By target', hint: 'I know the amount I want' },
+    { value: 'sip', label: 'By SIP', hint: 'I know what I can invest' }
+  ]
+  return (
+    <div
+      role="tablist"
+      aria-label="Planning mode"
+      className="grid grid-cols-2 gap-1 rounded-xl bg-[#10301d]/6 p-1"
+    >
+      {options.map(o => {
+        const active = mode === o.value
+        return (
+          <button
+            key={o.value}
+            role="tab"
+            aria-selected={active}
+            type="button"
+            onClick={() => onChange(o.value)}
+            className={`rounded-lg px-3 py-2 text-left transition-all ${
+              active
+                ? 'bg-[#fffdf7] shadow-[0_1px_6px_-2px_rgba(16,48,29,0.4)]'
+                : 'hover:bg-[#fffdf7]/50'
+            }`}
+          >
+            <span
+              className={`block text-[13px] font-semibold ${
+                active ? 'text-[#10301d]' : 'text-[#10301d]/55'
+              }`}
+            >
+              {o.label}
+            </span>
+            <span className="block text-[11px] text-[#10301d]/45">{o.hint}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/* ── monthly-SIP field (drives the corpus in 'sip' mode) ───── */
+function SipField({
+  value,
+  onChange
+}: {
+  value: number
+  onChange: (n: number) => void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+
+  const commit = () => {
+    const parsed = Number((draft ?? String(value)).replace(/,/g, ''))
+    onChange(clamp(Number.isFinite(parsed) ? parsed : 0, 0, MAX_SIP))
+    setDraft(null)
+  }
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <label className="text-[13px] font-medium tracking-wide text-[#10301d]/80 uppercase">
+          Monthly SIP
+        </label>
+        <div className="flex items-stretch overflow-hidden rounded-md border border-[#10301d]/15 bg-[#fffdf7] focus-within:border-[#b5893a] focus-within:ring-2 focus-within:ring-[#b5893a]/25">
+          <span className="flex items-center bg-[#10301d]/5 px-2.5 text-[13px] font-medium text-[#10301d]/55">
+            ₹
+          </span>
+          <input
+            type="number"
+            inputMode="decimal"
+            aria-label="Monthly SIP amount"
+            value={draft ?? value}
+            min={0}
+            max={MAX_SIP}
+            step={500}
+            onChange={e => {
+              setDraft(e.target.value)
+              const v = Number(e.target.value.replace(/,/g, ''))
+              if (Number.isFinite(v)) onChange(clamp(v, 0, MAX_SIP))
+            }}
+            onBlur={commit}
+            onKeyDown={e => e.key === 'Enter' && commit()}
+            className={`w-32 [appearance:textfield] bg-transparent px-3 py-1.5 text-right text-[15px] font-semibold text-[#10301d] tabular-nums outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${displayFont.className}`}
+          />
+          <span className="flex items-center bg-[#10301d]/5 px-2.5 text-[12px] font-medium text-[#10301d]/50">
+            / mo
+          </span>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {SIP_PRESETS.map(p => (
+          <button
+            key={p.label}
+            type="button"
+            onClick={() => onChange(p.value)}
+            className={`rounded px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+              value === p.value
+                ? 'bg-[#1d4d31] text-[#f4efe2]'
+                : 'border border-[#10301d]/20 text-[#10301d]/55 hover:border-[#1d4d31]/50 hover:text-[#1d4d31]'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      <input
+        type="range"
+        aria-label="Monthly SIP slider"
+        value={Math.min(value, SIP_SLIDER_MAX)}
+        min={0}
+        max={SIP_SLIDER_MAX}
+        step={500}
+        onChange={e => onChange(Number(e.target.value))}
+        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#10301d]/12 accent-[#1d4d31] outline-none"
+      />
+      <p className="text-xs text-[#10301d]/45">
+        {inrWords(value)} a month to start, before any step-up
+      </p>
+    </div>
+  )
+}
+
 /* ── lump-sum field ───────────────────────────────────────── */
 function LumpSumField({
   value,
@@ -318,7 +453,9 @@ export function GoalDetail({
 }) {
   const [name, setName] = useState(goal.name)
   const [icon, setIcon] = useState(goal.icon)
+  const [mode, setMode] = useState<GoalMode>(goal.mode ?? 'target')
   const [target, setTarget] = useState(goal.target)
+  const [monthlySip, setMonthlySip] = useState(goal.monthlySip)
   const [years, setYears] = useState(goal.years)
   const [annualReturn, setAnnualReturn] = useState(goal.annualReturn)
   const [stepUp, setStepUp] = useState(goal.stepUp)
@@ -345,7 +482,9 @@ export function GoalDetail({
       createdAt: goal.createdAt,
       name,
       icon,
+      mode,
       target,
+      monthlySip,
       years,
       annualReturn,
       stepUp,
@@ -356,7 +495,9 @@ export function GoalDetail({
   }, [
     name,
     icon,
+    mode,
     target,
+    monthlySip,
     years,
     annualReturn,
     stepUp,
@@ -373,7 +514,9 @@ export function GoalDetail({
       createdAt: goal.createdAt,
       name,
       icon,
+      mode,
       target,
+      monthlySip,
       years,
       annualReturn,
       stepUp,
@@ -386,7 +529,9 @@ export function GoalDetail({
       goal.createdAt,
       name,
       icon,
+      mode,
       target,
+      monthlySip,
       years,
       annualReturn,
       stepUp,
@@ -547,19 +692,24 @@ export function GoalDetail({
           {/* inputs */}
           <section className="rounded-2xl border border-[#10301d]/10 bg-[#fffdf7] p-6 shadow-[0_2px_30px_-12px_rgba(16,48,29,0.25)] sm:p-8">
             <h2
-              className={`mb-6 text-2xl text-[#10301d] ${displayFont.className}`}
+              className={`mb-5 text-2xl text-[#10301d] ${displayFont.className}`}
             >
               Your plan
             </h2>
-            <div className="space-y-7">
-              <TargetField
-                value={target}
-                onChange={setTarget}
-                inflateTarget={inflateTarget}
-                onToggleInflate={setInflateTarget}
-                years={years}
-                inflation={inflation}
-              />
+            <ModeToggle mode={mode} onChange={setMode} />
+            <div className="mt-7 space-y-7">
+              {mode === 'sip' ? (
+                <SipField value={monthlySip} onChange={setMonthlySip} />
+              ) : (
+                <TargetField
+                  value={target}
+                  onChange={setTarget}
+                  inflateTarget={inflateTarget}
+                  onToggleInflate={setInflateTarget}
+                  years={years}
+                  inflation={inflation}
+                />
+              )}
               <LumpSumField value={lumpSum} onChange={setLumpSum} />
               <Field
                 label="Years to goal"
@@ -612,53 +762,105 @@ export function GoalDetail({
                 background: `linear-gradient(155deg, ${FOREST_SOFT} 0%, ${FOREST} 70%)`
               }}
             >
-              <p className="text-[11px] font-semibold tracking-[0.25em] text-[#f4efe2]/60 uppercase">
-                {calc.monthlySip > 0
-                  ? 'Start investing every month'
-                  : 'Your lump sum already covers this'}
-              </p>
-              <p
-                className={`mt-2 text-5xl leading-none tracking-tight text-[#f4efe2] sm:text-6xl ${displayFont.className}`}
-              >
-                {inr(calc.monthlySip)}
-              </p>
-              {calc.monthlySip > 0 ? (
-                <p className="mt-2 text-sm text-[#f4efe2]/70">
-                  {inrWords(calc.monthlySip)} per month, then{' '}
-                  <span className="font-semibold text-[#d8b877]">
-                    +{stepUp}%
-                  </span>{' '}
-                  a year for {years} years
-                  {lumpSum > 0 && (
-                    <>
-                      , on top of your{' '}
-                      <span className="font-semibold text-[#d8b877]">
-                        {inrWords(lumpSum)}
-                      </span>{' '}
-                      lump sum
-                    </>
-                  )}
-                  .
-                </p>
+              {mode === 'sip' ? (
+                <>
+                  <p className="text-[11px] font-semibold tracking-[0.25em] text-[#f4efe2]/60 uppercase">
+                    Projected corpus in {years} years
+                  </p>
+                  <p
+                    className={`mt-2 text-5xl leading-none tracking-tight text-[#f4efe2] sm:text-6xl ${displayFont.className}`}
+                  >
+                    {inr(calc.nominalTarget)}
+                  </p>
+                  <p className="mt-2 text-sm text-[#f4efe2]/70">
+                    Investing{' '}
+                    <span className="font-semibold text-[#d8b877]">
+                      {inrWords(monthlySip)}
+                    </span>{' '}
+                    a month, stepped up{' '}
+                    <span className="font-semibold text-[#d8b877]">
+                      +{stepUp}%
+                    </span>{' '}
+                    a year for {years} years
+                    {lumpSum > 0 && (
+                      <>
+                        , plus your{' '}
+                        <span className="font-semibold text-[#d8b877]">
+                          {inrWords(lumpSum)}
+                        </span>{' '}
+                        lump sum
+                      </>
+                    )}
+                    .
+                  </p>
+                  <div className="mt-7 grid grid-cols-3 gap-4 border-t border-[#f4efe2]/12 pt-6">
+                    <Stat
+                      label="Total invested"
+                      value={inrWords(calc.invested)}
+                    />
+                    <Stat label="Wealth gained" value={inrWords(calc.gain)} />
+                    <Stat
+                      label={`SIP in yr ${years}`}
+                      value={inrWords(calc.lastYearMonthly)}
+                    />
+                  </div>
+                </>
               ) : (
-                <p className="mt-2 text-sm text-[#f4efe2]/70">
-                  Your {inrWords(lumpSum)} lump sum grows to{' '}
-                  <span className="font-semibold text-[#d8b877]">
-                    {inrWords(calc.lumpFutureValue)}
-                  </span>{' '}
-                  in {years} years — no monthly SIP needed.
-                </p>
-              )}
-              <div className="mt-7 grid grid-cols-3 gap-4 border-t border-[#f4efe2]/12 pt-6">
-                <Stat label="Total invested" value={inrWords(calc.invested)} />
-                <Stat label="Wealth gained" value={inrWords(calc.gain)} />
-                <Stat
-                  label={lumpSum > 0 ? 'Lump sum grows to' : `SIP in yr ${years}`}
-                  value={inrWords(
-                    lumpSum > 0 ? calc.lumpFutureValue : calc.lastYearMonthly
+                <>
+                  <p className="text-[11px] font-semibold tracking-[0.25em] text-[#f4efe2]/60 uppercase">
+                    {calc.monthlySip > 0
+                      ? 'Start investing every month'
+                      : 'Your lump sum already covers this'}
+                  </p>
+                  <p
+                    className={`mt-2 text-5xl leading-none tracking-tight text-[#f4efe2] sm:text-6xl ${displayFont.className}`}
+                  >
+                    {inr(calc.monthlySip)}
+                  </p>
+                  {calc.monthlySip > 0 ? (
+                    <p className="mt-2 text-sm text-[#f4efe2]/70">
+                      {inrWords(calc.monthlySip)} per month, then{' '}
+                      <span className="font-semibold text-[#d8b877]">
+                        +{stepUp}%
+                      </span>{' '}
+                      a year for {years} years
+                      {lumpSum > 0 && (
+                        <>
+                          , on top of your{' '}
+                          <span className="font-semibold text-[#d8b877]">
+                            {inrWords(lumpSum)}
+                          </span>{' '}
+                          lump sum
+                        </>
+                      )}
+                      .
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-sm text-[#f4efe2]/70">
+                      Your {inrWords(lumpSum)} lump sum grows to{' '}
+                      <span className="font-semibold text-[#d8b877]">
+                        {inrWords(calc.lumpFutureValue)}
+                      </span>{' '}
+                      in {years} years — no monthly SIP needed.
+                    </p>
                   )}
-                />
-              </div>
+                  <div className="mt-7 grid grid-cols-3 gap-4 border-t border-[#f4efe2]/12 pt-6">
+                    <Stat
+                      label="Total invested"
+                      value={inrWords(calc.invested)}
+                    />
+                    <Stat label="Wealth gained" value={inrWords(calc.gain)} />
+                    <Stat
+                      label={
+                        lumpSum > 0 ? 'Lump sum grows to' : `SIP in yr ${years}`
+                      }
+                      value={inrWords(
+                        lumpSum > 0 ? calc.lumpFutureValue : calc.lastYearMonthly
+                      )}
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
             {/* purchasing power */}

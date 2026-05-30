@@ -168,6 +168,86 @@ describe('calcGoal — solving for the monthly SIP', () => {
   })
 })
 
+describe('calcGoal — SIP-driven (forward) mode', () => {
+  it('projects the corpus a level SIP grows into (matches the annuity-due FV)', () => {
+    const g = goal({
+      mode: 'sip',
+      monthlySip: 25000,
+      years: 10,
+      annualReturn: 12,
+      stepUp: 0
+    })
+    const c = calcGoal(g)
+    // nominalTarget is now an output: monthlySip × annuity-due factor.
+    expectClose(c.nominalTarget, 25000 * annuityDueFactor(12, 10), 1e-6)
+    // The reported SIP is exactly what the user entered.
+    expect(c.monthlySip).toBe(25000)
+    // And the simulated final value equals the projected corpus.
+    expectClose(c.series.at(-1)!.value, c.nominalTarget, 1e-9)
+  })
+
+  it('adds the compounded lump sum on top of the SIP corpus', () => {
+    const withoutLump = calcGoal(goal({ mode: 'sip', monthlySip: 20000 }))
+    const withLump = calcGoal(
+      goal({ mode: 'sip', monthlySip: 20000, lumpSum: 5e5 })
+    )
+    expect(withLump.nominalTarget).toBeGreaterThan(withoutLump.nominalTarget)
+    expectClose(
+      withLump.nominalTarget - withoutLump.nominalTarget,
+      withLump.lumpFutureValue,
+      1e-6
+    )
+  })
+
+  it('grows the corpus when the SIP, step-up or horizon increases', () => {
+    const base = calcGoal(goal({ mode: 'sip', monthlySip: 10000 }))
+    expect(
+      calcGoal(goal({ mode: 'sip', monthlySip: 20000 })).nominalTarget
+    ).toBeGreaterThan(base.nominalTarget)
+    expect(
+      calcGoal(goal({ mode: 'sip', monthlySip: 10000, stepUp: 20 })).nominalTarget
+    ).toBeGreaterThan(base.nominalTarget)
+    expect(
+      calcGoal(goal({ mode: 'sip', monthlySip: 10000, years: 20 })).nominalTarget
+    ).toBeGreaterThan(base.nominalTarget)
+  })
+
+  it('reports the corpus in today’s purchasing power', () => {
+    const c = calcGoal(
+      goal({ mode: 'sip', monthlySip: 25000, years: 10, inflation: 6 })
+    )
+    expectClose(c.todayValue, c.nominalTarget / 1.06 ** 10, 1e-9)
+    expect(c.todayValue).toBeLessThan(c.nominalTarget)
+    expect(c.erodedPct).toBeGreaterThan(0)
+  })
+
+  it('ramps the contribution with step-up and tracks invested vs gain', () => {
+    const c = calcGoal(
+      goal({ mode: 'sip', monthlySip: 10000, years: 10, stepUp: 10 })
+    )
+    expectClose(c.lastYearMonthly, 10000 * 1.1 ** 9, 1e-9)
+    expect(c.invested).toBeGreaterThan(0)
+    expectClose(c.gain, c.nominalTarget - c.invested, 1e-6)
+    expect(c.gain).toBeGreaterThan(0)
+  })
+
+  it('yields a zero corpus (ignoring lump) when the SIP is zero', () => {
+    const c = calcGoal(goal({ mode: 'sip', monthlySip: 0, lumpSum: 0 }))
+    expectClose(c.nominalTarget, 0, 1e-9)
+    expect(c.monthlySip).toBe(0)
+  })
+
+  it('defaults a goal with no mode to the target-driven plan', () => {
+    // Backward compatibility: pre-mode stored goals must still solve for the SIP.
+    const legacy = { ...goal({ target: 1 * CRORE, years: 10, stepUp: 0 }) } as Goal
+    // Strip mode to mimic an old export.
+    delete (legacy as Partial<Goal>).mode
+    const c = calcGoal(legacy)
+    expect(c.nominalTarget).toBe(1 * CRORE)
+    expectClose(c.monthlySip, (1 * CRORE) / annuityDueFactor(12, 10), 1e-9)
+  })
+})
+
 describe('makeGoal', () => {
   it('merges defaults with overrides and stamps an id', () => {
     const g = makeGoal('Retirement', '🏖️', { target: 5 * CRORE, years: 25 })

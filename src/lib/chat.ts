@@ -59,16 +59,24 @@ export function buildFinancialContext(goals: Goal[]): string {
 
   goals.forEach((goal, i) => {
     const c = calcGoal(goal)
+    const sipMode = goal.mode === 'sip'
     totalSip += c.monthlySip
     totalTarget += c.nominalTarget
     lines.push(
       [
         `${i + 1}. ${goal.icon} ${goal.name}`,
-        `   - Time horizon: ${goal.years} years`,
-        `   - Target wealth: ${inrWords(c.nominalTarget)} (${inr(c.nominalTarget)})${
-          goal.inflateTarget ? ' — entered in today’s money, inflated to the horizon' : ''
+        `   - Planning mode: ${
+          sipMode
+            ? 'SIP-driven (user fixes the monthly SIP; the corpus is projected)'
+            : 'target-driven (user fixes the target; the SIP is solved for)'
         }`,
-        `   - Required monthly SIP (now): ${inr(c.monthlySip)}`,
+        `   - Time horizon: ${goal.years} years`,
+        `   - ${sipMode ? 'Projected corpus' : 'Target wealth'}: ${inrWords(c.nominalTarget)} (${inr(c.nominalTarget)})${
+          !sipMode && goal.inflateTarget
+            ? ' — entered in today’s money, inflated to the horizon'
+            : ''
+        }`,
+        `   - ${sipMode ? 'Chosen' : 'Required'} monthly SIP (now): ${inr(c.monthlySip)}`,
         `   - Final-year monthly SIP: ${inr(c.lastYearMonthly)}`,
         `   - Expected annual return: ${goal.annualReturn}%`,
         `   - Annual SIP step-up: ${goal.stepUp}%`,

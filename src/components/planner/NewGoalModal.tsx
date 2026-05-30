@@ -3,13 +3,17 @@
 import { useEffect, useState } from 'react'
 import {
   Goal,
+  GoalMode,
   GOAL_ICONS,
   GOAL_DEFAULTS,
   TARGET_PRESETS,
+  SIP_PRESETS,
+  SIP_SLIDER_MAX,
   makeGoal,
   logSliderToValue,
   valueToLogSlider,
   inrWords,
+  MAX_SIP,
   MAX_TARGET,
 } from '~/lib/goals'
 import { displayFont } from '~/lib/fonts'
@@ -25,9 +29,12 @@ export function NewGoalModal({
 }) {
   const [name, setName] = useState('')
   const [icon, setIcon] = useState('🎯')
+  const [mode, setMode] = useState<GoalMode>('target')
   const [target, setTarget] = useState(GOAL_DEFAULTS.target)
+  const [monthlySip, setMonthlySip] = useState(GOAL_DEFAULTS.monthlySip)
   const [years, setYears] = useState(GOAL_DEFAULTS.years)
   const [targetDraft, setTargetDraft] = useState<string | null>(null)
+  const [sipDraft, setSipDraft] = useState<string | null>(null)
   // true while `name` holds an auto-filled label from an icon click (not user-typed)
   const [nameIsAuto, setNameIsAuto] = useState(false)
 
@@ -49,7 +56,9 @@ export function NewGoalModal({
 
   const handleCreate = () => {
     if (!name.trim()) return
-    onCreate(makeGoal(name.trim(), icon, { target, years }))
+    const overrides =
+      mode === 'sip' ? { mode, monthlySip, years } : { mode, target, years }
+    onCreate(makeGoal(name.trim(), icon, overrides))
     onClose()
   }
 
@@ -57,6 +66,12 @@ export function NewGoalModal({
     const parsed = Number((targetDraft ?? String(target)).replace(/,/g, ''))
     setTarget(clamp(Number.isFinite(parsed) ? parsed : GOAL_DEFAULTS.target, 0, MAX_TARGET))
     setTargetDraft(null)
+  }
+
+  const commitSip = () => {
+    const parsed = Number((sipDraft ?? String(monthlySip)).replace(/,/g, ''))
+    setMonthlySip(clamp(Number.isFinite(parsed) ? parsed : GOAL_DEFAULTS.monthlySip, 0, MAX_SIP))
+    setSipDraft(null)
   }
 
   return (
@@ -132,7 +147,37 @@ export function NewGoalModal({
           </div>
         </div>
 
+        {/* planning mode */}
+        <div className="mt-5 space-y-2">
+          <label className="text-[12px] font-semibold tracking-widest text-[#10301d]/55 uppercase">
+            Plan by
+          </label>
+          <div className="grid grid-cols-2 gap-1 rounded-xl bg-[#10301d]/6 p-1">
+            {(
+              [
+                { value: 'target', label: 'Target amount' },
+                { value: 'sip', label: 'Monthly SIP' }
+              ] as { value: GoalMode; label: string }[]
+            ).map(o => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => setMode(o.value)}
+                aria-pressed={mode === o.value}
+                className={`rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-all ${
+                  mode === o.value
+                    ? 'bg-[#fffdf7] text-[#10301d] shadow-[0_1px_6px_-2px_rgba(16,48,29,0.4)]'
+                    : 'text-[#10301d]/55 hover:bg-[#fffdf7]/50'
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* target amount */}
+        {mode === 'target' ? (
         <div className="mt-5 space-y-2.5">
           <div className="flex items-baseline justify-between">
             <label className="text-[12px] font-semibold tracking-widest text-[#10301d]/55 uppercase">
@@ -191,6 +236,72 @@ export function NewGoalModal({
           />
           <p className="text-[11px] text-[#10301d]/40">{inrWords(target)}</p>
         </div>
+        ) : (
+        /* monthly SIP */
+        <div className="mt-5 space-y-2.5">
+          <div className="flex items-baseline justify-between">
+            <label className="text-[12px] font-semibold tracking-widest text-[#10301d]/55 uppercase">
+              Monthly SIP
+            </label>
+            <div className="flex items-stretch overflow-hidden rounded-lg border border-[#10301d]/15 bg-white focus-within:border-[#b5893a] focus-within:ring-2 focus-within:ring-[#b5893a]/25">
+              <span className="flex items-center bg-[#10301d]/5 px-2 text-[12px] font-medium text-[#10301d]/50">
+                ₹
+              </span>
+              <input
+                type="number"
+                aria-label="Monthly SIP amount"
+                value={sipDraft ?? monthlySip}
+                onChange={e => {
+                  setSipDraft(e.target.value)
+                  const v = Number(e.target.value.replace(/,/g, ''))
+                  if (Number.isFinite(v)) setMonthlySip(Math.min(v, MAX_SIP))
+                }}
+                onBlur={commitSip}
+                onKeyDown={e => e.key === 'Enter' && commitSip()}
+                className="w-24 [appearance:textfield] bg-transparent px-3 py-1.5 text-right text-[14px] font-semibold text-[#10301d] tabular-nums outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
+              <span className="flex items-center bg-[#10301d]/5 px-2 text-[12px] font-medium text-[#10301d]/50">
+                / mo
+              </span>
+            </div>
+          </div>
+
+          {/* preset pills */}
+          <div className="flex flex-wrap gap-1.5">
+            {SIP_PRESETS.map(p => (
+              <button
+                key={p.label}
+                type="button"
+                onClick={() => { setMonthlySip(p.value); setSipDraft(null) }}
+                className={`rounded px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+                  monthlySip === p.value
+                    ? 'bg-[#1d4d31] text-[#f4efe2]'
+                    : 'border border-[#10301d]/20 text-[#10301d]/55 hover:border-[#1d4d31]/50 hover:text-[#1d4d31]'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          <input
+            type="range"
+            aria-label="Monthly SIP slider"
+            value={Math.min(monthlySip, SIP_SLIDER_MAX)}
+            min={0}
+            max={SIP_SLIDER_MAX}
+            step={500}
+            onChange={e => {
+              setMonthlySip(Number(e.target.value))
+              setSipDraft(null)
+            }}
+            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#10301d]/12 accent-[#1d4d31] outline-none"
+          />
+          <p className="text-[11px] text-[#10301d]/40">
+            {inrWords(monthlySip)} a month — we’ll project the corpus it grows into
+          </p>
+        </div>
+        )}
 
         {/* years */}
         <div className="mt-5 space-y-2">

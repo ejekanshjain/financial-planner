@@ -1,16 +1,33 @@
 export const CRORE = 1e7
 export const MAX_TARGET = 100 * CRORE
+/** Upper clamp for a user-entered monthly SIP in the contribution-driven mode. */
+export const MAX_SIP = 50 * 1e5
+
+/**
+ * How a goal is planned:
+ * - `target` — the user enters a target wealth and we solve for the monthly SIP.
+ * - `sip`    — the user enters a monthly SIP and we project the corpus it grows into.
+ */
+export type GoalMode = 'target' | 'sip'
 
 export interface Goal {
   id: string
   name: string
   icon: string
+  /** Which input the user drives the plan with; defaults to `target`. */
+  mode: GoalMode
   /**
    * The amount the user typed for "target wealth". When `inflateTarget` is
    * false this is the nominal future value; when true it is today's
    * purchasing power and the real (nominal) target is grown by inflation.
+   * Only used when `mode === 'target'`.
    */
   target: number
+  /**
+   * The monthly SIP the user starts with. Only used when `mode === 'sip'`,
+   * where the target wealth becomes a projected output instead of an input.
+   */
+  monthlySip: number
   years: number
   annualReturn: number
   stepUp: number
@@ -23,7 +40,11 @@ export interface Goal {
 }
 
 export interface GoalCalc {
-  /** Nominal future value the plan is solving for (after any inflation grossing-up). */
+  /**
+   * Nominal future value at the horizon. In `target` mode this is the target
+   * being solved for (after any inflation grossing-up); in `sip` mode it is the
+   * corpus the entered SIP is projected to grow into.
+   */
   nominalTarget: number
   /** Future value of the lump sum alone at the horizon. */
   lumpFutureValue: number
@@ -50,7 +71,9 @@ export const GOAL_ICONS = [
 ]
 
 export const GOAL_DEFAULTS = {
+  mode: 'target' as GoalMode,
   target: 1 * CRORE,
+  monthlySip: 25000,
   years: 10,
   annualReturn: 12,
   stepUp: 10,
@@ -67,6 +90,18 @@ export const TARGET_PRESETS = [
   { label: '10 Cr', value: 10 * CRORE },
   { label: '25 Cr', value: 25 * CRORE },
   { label: '50 Cr', value: 50 * CRORE }
+]
+
+/** Upper bound of the monthly-SIP slider; the number field may still exceed it up to MAX_SIP. */
+export const SIP_SLIDER_MAX = 2 * 1e5
+
+export const SIP_PRESETS = [
+  { label: '₹5K', value: 5_000 },
+  { label: '₹10K', value: 10_000 },
+  { label: '₹25K', value: 25_000 },
+  { label: '₹50K', value: 50_000 },
+  { label: '₹1L', value: 1_00_000 },
+  { label: '₹2L', value: 2_00_000 }
 ]
 
 export const CHART_PALETTE = [
@@ -96,30 +131,44 @@ export function makeGoal(
 }
 
 export function calcGoal(goal: Goal): GoalCalc {
-  const { target, years, annualReturn, stepUp, inflation, inflateTarget } = goal
+  const { years, annualReturn, stepUp, inflation, inflateTarget } = goal
+  const mode: GoalMode = goal.mode ?? 'target'
   const lumpSum = Math.max(0, goal.lumpSum ?? 0)
   const monthlyRate = annualReturn / 100 / 12
   const stepFactor = 1 + stepUp / 100
   const months = Math.max(1, Math.round(years * 12))
 
-  // When the target is expressed in today's money, gross it up to the horizon.
-  const nominalTarget = inflateTarget
-    ? target * (1 + inflation / 100) ** years
-    : target
-
-  // The lump sum compounds for the full horizon and covers part of the target;
-  // the SIP only has to fund whatever remains.
+  // The lump sum compounds for the full horizon in both modes.
   const lumpFutureValue = lumpSum * (1 + monthlyRate) ** months
-  const remaining = Math.max(0, nominalTarget - lumpFutureValue)
 
-  let factor = 0
-  for (let m = 1; m <= months; m++) {
-    const yearIdx = Math.floor((m - 1) / 12)
-    factor = (factor + stepFactor ** yearIdx) * (1 + monthlyRate)
+  // Decide the monthly SIP up front: in `target` mode we solve for it; in `sip`
+  // mode it's the user's input and the corpus becomes the output instead.
+  let monthlySip: number
+  // The target wealth the plan is built around. In `sip` mode it is left null
+  // here and filled from the forward simulation below.
+  let plannedTarget: number | null = null
+
+  if (mode === 'sip') {
+    monthlySip = Math.max(0, goal.monthlySip ?? 0)
+  } else {
+    // When the target is expressed in today's money, gross it up to the horizon.
+    const target = inflateTarget
+      ? goal.target * (1 + inflation / 100) ** years
+      : goal.target
+    plannedTarget = target
+
+    // The lump sum covers part of the target; the SIP funds whatever remains.
+    const remaining = Math.max(0, target - lumpFutureValue)
+    let factor = 0
+    for (let m = 1; m <= months; m++) {
+      const yearIdx = Math.floor((m - 1) / 12)
+      factor = (factor + stepFactor ** yearIdx) * (1 + monthlyRate)
+    }
+    monthlySip = factor > 0 ? remaining / factor : 0
   }
 
-  const monthlySip = factor > 0 ? remaining / factor : 0
-
+  // Forward simulation, shared by both modes: grow the lump sum plus every
+  // (stepped-up) monthly contribution and snapshot the balance each year.
   let bal = lumpSum
   let invested = lumpSum
   const series: { year: number; invested: number; value: number }[] = []
@@ -133,9 +182,12 @@ export function calcGoal(goal: Goal): GoalCalc {
   }
 
   const lastYearMonthly = monthlySip * stepFactor ** Math.max(0, years - 1)
-  // When a lump sum alone overshoots the target, the plan ends at `bal`
-  // (which exceeds nominalTarget), so base the gain on the actual final value.
-  const finalValue = Math.max(nominalTarget, bal)
+
+  // In `sip` mode the corpus IS whatever the simulation produced. In `target`
+  // mode the plan solves for `plannedTarget`, but a lump sum alone can overshoot
+  // it, so the actual final value (and the gain) is based on `bal`.
+  const nominalTarget = mode === 'sip' ? bal : plannedTarget!
+  const finalValue = mode === 'sip' ? bal : Math.max(nominalTarget, bal)
   const gain = finalValue - invested
   const todayValue = nominalTarget / (1 + inflation / 100) ** years
   const erodedPct =
@@ -250,7 +302,10 @@ function normalizeGoal(raw: unknown): Goal {
     id: typeof g.id === 'string' && g.id ? g.id : crypto.randomUUID(),
     name,
     icon: typeof g.icon === 'string' && g.icon ? g.icon : '🎯',
+    // Older exports predate `mode`; default them to the target-driven plan.
+    mode: g.mode === 'sip' ? 'sip' : 'target',
     target: clamp(num(g.target, GOAL_DEFAULTS.target), 0, MAX_TARGET),
+    monthlySip: clamp(num(g.monthlySip, GOAL_DEFAULTS.monthlySip), 0, MAX_SIP),
     years: clamp(Math.round(num(g.years, GOAL_DEFAULTS.years)), 1, 50),
     annualReturn: clamp(num(g.annualReturn, GOAL_DEFAULTS.annualReturn), 1, 30),
     stepUp: clamp(num(g.stepUp, GOAL_DEFAULTS.stepUp), 0, 50),

@@ -42,9 +42,14 @@ export function GoalCard({
             >
               {goal.name}
             </h3>
-            <span className="mt-1 inline-block rounded-full bg-[#10301d]/8 px-2 py-0.5 text-[11px] font-medium text-[#10301d]/55">
-              {goal.years} yr goal
-            </span>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <span className="inline-block rounded-full bg-[#10301d]/8 px-2 py-0.5 text-[11px] font-medium text-[#10301d]/55">
+                {goal.years} yr goal
+              </span>
+              <span className="inline-block rounded-full bg-[#b5893a]/15 px-2 py-0.5 text-[11px] font-medium text-[#8a6722]">
+                {goal.mode === 'sip' ? 'by SIP' : 'by target'}
+              </span>
+            </div>
           </div>
         </div>
         <div className="mt-0.5 flex shrink-0 items-center gap-1">
@@ -92,7 +97,7 @@ export function GoalCard({
       <div className="mt-4 grid grid-cols-2 gap-4">
         <div>
           <p className="text-[11px] font-semibold tracking-widest text-[#10301d]/45 uppercase">
-            Target
+            {goal.mode === 'sip' ? 'Projected' : 'Target'}
           </p>
           <p
             className={`mt-0.5 text-[22px] leading-none text-[#10301d] ${displayFont.className}`}
