@@ -1,0 +1,15 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" fill="#10301d"/>
+  <!-- ascending bars (safe zone ~410px centred) -->
+  <g>
+    <rect x="120" y="300" width="52" height="92" rx="10" fill="#3a7b5e"/>
+    <rect x="200" y="252" width="52" height="140" rx="10" fill="#4f9374"/>
+    <rect x="280" y="200" width="52" height="192" rx="10" fill="#b5893a"/>
+    <rect x="360" y="148" width="52" height="244" rx="10" fill="#d6a84c"/>
+  </g>
+  <!-- upward trend arrow -->
+  <path d="M132 268 L228 212 L312 244 L392 140" stroke="#fffdf7" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M348 132 L400 124 L392 176 Z" fill="#fffdf7"/>
+  <!-- rupee mark -->
+  <text x="256" y="445" font-family="Georgia, 'Times New Roman', serif" font-size="120" font-weight="700" fill="#fffdf7" text-anchor="middle">₹</text>
+</svg>
