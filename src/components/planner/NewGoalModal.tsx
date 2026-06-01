@@ -9,6 +9,7 @@ import {
   TARGET_PRESETS,
   SIP_PRESETS,
   SIP_SLIDER_MAX,
+  SWP_DEFAULTS,
   makeGoal,
   logSliderToValue,
   valueToLogSlider,
@@ -19,6 +20,169 @@ import {
 import { displayFont } from '~/lib/fonts'
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
+
+/* ── lump-amount field: ₹ suffix, presets, log slider (target / corpus) ── */
+function AmountField({
+  label,
+  value,
+  onChange,
+  helper
+}: {
+  label: string
+  value: number
+  onChange: (n: number) => void
+  helper: string
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const commit = () => {
+    const parsed = Number((draft ?? String(value)).replace(/,/g, ''))
+    onChange(clamp(Number.isFinite(parsed) ? parsed : value, 0, MAX_TARGET))
+    setDraft(null)
+  }
+  return (
+    <div className="mt-5 space-y-2.5">
+      <div className="flex items-baseline justify-between">
+        <label className="text-[12px] font-semibold tracking-widest text-[#10301d]/55 uppercase">
+          {label}
+        </label>
+        <div className="flex items-stretch overflow-hidden rounded-lg border border-[#10301d]/15 bg-white focus-within:border-[#b5893a] focus-within:ring-2 focus-within:ring-[#b5893a]/25">
+          <input
+            type="number"
+            aria-label={label}
+            value={draft ?? value}
+            onChange={e => {
+              setDraft(e.target.value)
+              const v = Number(e.target.value.replace(/,/g, ''))
+              if (Number.isFinite(v)) onChange(Math.min(v, MAX_TARGET))
+            }}
+            onBlur={commit}
+            onKeyDown={e => e.key === 'Enter' && commit()}
+            className="w-28 [appearance:textfield] bg-transparent px-3 py-1.5 text-right text-[14px] font-semibold text-[#10301d] tabular-nums outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          />
+          <span className="flex items-center bg-[#10301d]/5 px-2 text-[12px] font-medium text-[#10301d]/50">
+            ₹
+          </span>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {TARGET_PRESETS.map(p => (
+          <button
+            key={p.label}
+            type="button"
+            onClick={() => {
+              onChange(p.value)
+              setDraft(null)
+            }}
+            className={`rounded px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+              value === p.value
+                ? 'bg-[#1d4d31] text-[#f4efe2]'
+                : 'border border-[#10301d]/20 text-[#10301d]/55 hover:border-[#1d4d31]/50 hover:text-[#1d4d31]'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <input
+        type="range"
+        aria-label={`${label} slider`}
+        value={valueToLogSlider(value)}
+        min={0}
+        max={1000}
+        step={1}
+        onChange={e => {
+          onChange(logSliderToValue(Number(e.target.value)))
+          setDraft(null)
+        }}
+        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#10301d]/12 accent-[#1d4d31] outline-none"
+      />
+      <p className="text-[11px] text-[#10301d]/40">{helper}</p>
+    </div>
+  )
+}
+
+/* ── monthly-amount field: ₹ prefix + /mo, presets, linear slider (SIP / withdrawal) ── */
+function MonthlyField({
+  label,
+  value,
+  onChange,
+  helper
+}: {
+  label: string
+  value: number
+  onChange: (n: number) => void
+  helper: string
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const commit = () => {
+    const parsed = Number((draft ?? String(value)).replace(/,/g, ''))
+    onChange(clamp(Number.isFinite(parsed) ? parsed : value, 0, MAX_SIP))
+    setDraft(null)
+  }
+  return (
+    <div className="mt-5 space-y-2.5">
+      <div className="flex items-baseline justify-between">
+        <label className="text-[12px] font-semibold tracking-widest text-[#10301d]/55 uppercase">
+          {label}
+        </label>
+        <div className="flex items-stretch overflow-hidden rounded-lg border border-[#10301d]/15 bg-white focus-within:border-[#b5893a] focus-within:ring-2 focus-within:ring-[#b5893a]/25">
+          <span className="flex items-center bg-[#10301d]/5 px-2 text-[12px] font-medium text-[#10301d]/50">
+            ₹
+          </span>
+          <input
+            type="number"
+            aria-label={`${label} amount`}
+            value={draft ?? value}
+            onChange={e => {
+              setDraft(e.target.value)
+              const v = Number(e.target.value.replace(/,/g, ''))
+              if (Number.isFinite(v)) onChange(Math.min(v, MAX_SIP))
+            }}
+            onBlur={commit}
+            onKeyDown={e => e.key === 'Enter' && commit()}
+            className="w-24 [appearance:textfield] bg-transparent px-3 py-1.5 text-right text-[14px] font-semibold text-[#10301d] tabular-nums outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          />
+          <span className="flex items-center bg-[#10301d]/5 px-2 text-[12px] font-medium text-[#10301d]/50">
+            / mo
+          </span>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {SIP_PRESETS.map(p => (
+          <button
+            key={p.label}
+            type="button"
+            onClick={() => {
+              onChange(p.value)
+              setDraft(null)
+            }}
+            className={`rounded px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+              value === p.value
+                ? 'bg-[#1d4d31] text-[#f4efe2]'
+                : 'border border-[#10301d]/20 text-[#10301d]/55 hover:border-[#1d4d31]/50 hover:text-[#1d4d31]'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <input
+        type="range"
+        aria-label={`${label} slider`}
+        value={Math.min(value, SIP_SLIDER_MAX)}
+        min={0}
+        max={SIP_SLIDER_MAX}
+        step={500}
+        onChange={e => {
+          onChange(Number(e.target.value))
+          setDraft(null)
+        }}
+        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#10301d]/12 accent-[#1d4d31] outline-none"
+      />
+      <p className="text-[11px] text-[#10301d]/40">{helper}</p>
+    </div>
+  )
+}
 
 export function NewGoalModal({
   onClose,
@@ -33,10 +197,18 @@ export function NewGoalModal({
   const [target, setTarget] = useState(GOAL_DEFAULTS.target)
   const [monthlySip, setMonthlySip] = useState(GOAL_DEFAULTS.monthlySip)
   const [years, setYears] = useState(GOAL_DEFAULTS.years)
-  const [targetDraft, setTargetDraft] = useState<string | null>(null)
-  const [sipDraft, setSipDraft] = useState<string | null>(null)
   // true while `name` holds an auto-filled label from an icon click (not user-typed)
   const [nameIsAuto, setNameIsAuto] = useState(false)
+
+  // Switching into withdrawal mode seeds friendlier decumulation defaults.
+  const handleMode = (m: GoalMode) => {
+    if (m === 'swp' && mode !== 'swp') {
+      setTarget(SWP_DEFAULTS.corpus)
+      setMonthlySip(SWP_DEFAULTS.withdrawal)
+      setYears(SWP_DEFAULTS.years)
+    }
+    setMode(m)
+  }
 
   // Escape closes the modal, matching the backdrop-click behaviour.
   useEffect(() => {
@@ -56,22 +228,21 @@ export function NewGoalModal({
 
   const handleCreate = () => {
     if (!name.trim()) return
-    const overrides =
-      mode === 'sip' ? { mode, monthlySip, years } : { mode, target, years }
+    const overrides: Partial<Goal> =
+      mode === 'sip'
+        ? { mode, monthlySip, years }
+        : mode === 'swp'
+          ? {
+              mode,
+              target,
+              monthlySip,
+              years,
+              annualReturn: SWP_DEFAULTS.annualReturn,
+              stepUp: SWP_DEFAULTS.stepUp
+            }
+          : { mode, target, years }
     onCreate(makeGoal(name.trim(), icon, overrides))
     onClose()
-  }
-
-  const commitTarget = () => {
-    const parsed = Number((targetDraft ?? String(target)).replace(/,/g, ''))
-    setTarget(clamp(Number.isFinite(parsed) ? parsed : GOAL_DEFAULTS.target, 0, MAX_TARGET))
-    setTargetDraft(null)
-  }
-
-  const commitSip = () => {
-    const parsed = Number((sipDraft ?? String(monthlySip)).replace(/,/g, ''))
-    setMonthlySip(clamp(Number.isFinite(parsed) ? parsed : GOAL_DEFAULTS.monthlySip, 0, MAX_SIP))
-    setSipDraft(null)
   }
 
   return (
@@ -152,19 +323,20 @@ export function NewGoalModal({
           <label className="text-[12px] font-semibold tracking-widest text-[#10301d]/55 uppercase">
             Plan by
           </label>
-          <div className="grid grid-cols-2 gap-1 rounded-xl bg-[#10301d]/6 p-1">
+          <div className="grid grid-cols-3 gap-1 rounded-xl bg-[#10301d]/6 p-1">
             {(
               [
-                { value: 'target', label: 'Target amount' },
-                { value: 'sip', label: 'Monthly SIP' }
+                { value: 'target', label: 'Target' },
+                { value: 'sip', label: 'SIP' },
+                { value: 'swp', label: 'Withdraw' }
               ] as { value: GoalMode; label: string }[]
             ).map(o => (
               <button
                 key={o.value}
                 type="button"
-                onClick={() => setMode(o.value)}
+                onClick={() => handleMode(o.value)}
                 aria-pressed={mode === o.value}
-                className={`rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-all ${
+                className={`rounded-lg px-2 py-1.5 text-[13px] font-semibold transition-all ${
                   mode === o.value
                     ? 'bg-[#fffdf7] text-[#10301d] shadow-[0_1px_6px_-2px_rgba(16,48,29,0.4)]'
                     : 'text-[#10301d]/55 hover:bg-[#fffdf7]/50'
@@ -176,138 +348,45 @@ export function NewGoalModal({
           </div>
         </div>
 
-        {/* target amount */}
-        {mode === 'target' ? (
-        <div className="mt-5 space-y-2.5">
-          <div className="flex items-baseline justify-between">
-            <label className="text-[12px] font-semibold tracking-widest text-[#10301d]/55 uppercase">
-              Target amount
-            </label>
-            <div className="flex items-stretch overflow-hidden rounded-lg border border-[#10301d]/15 bg-white focus-within:border-[#b5893a] focus-within:ring-2 focus-within:ring-[#b5893a]/25">
-              <input
-                type="number"
-                aria-label="Target amount"
-                value={targetDraft ?? target}
-                onChange={e => {
-                  setTargetDraft(e.target.value)
-                  const v = Number(e.target.value.replace(/,/g, ''))
-                  if (Number.isFinite(v)) setTarget(Math.min(v, MAX_TARGET))
-                }}
-                onBlur={commitTarget}
-                onKeyDown={e => e.key === 'Enter' && commitTarget()}
-                className="w-28 [appearance:textfield] bg-transparent px-3 py-1.5 text-right text-[14px] font-semibold text-[#10301d] tabular-nums outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              />
-              <span className="flex items-center bg-[#10301d]/5 px-2 text-[12px] font-medium text-[#10301d]/50">
-                ₹
-              </span>
-            </div>
-          </div>
-
-          {/* preset pills */}
-          <div className="flex flex-wrap gap-1.5">
-            {TARGET_PRESETS.map(p => (
-              <button
-                key={p.label}
-                type="button"
-                onClick={() => { setTarget(p.value); setTargetDraft(null) }}
-                className={`rounded px-2 py-0.5 text-[11px] font-semibold transition-colors ${
-                  target === p.value
-                    ? 'bg-[#1d4d31] text-[#f4efe2]'
-                    : 'border border-[#10301d]/20 text-[#10301d]/55 hover:border-[#1d4d31]/50 hover:text-[#1d4d31]'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-
-          <input
-            type="range"
-            aria-label="Target amount slider"
-            value={valueToLogSlider(target)}
-            min={0}
-            max={1000}
-            step={1}
-            onChange={e => {
-              setTarget(logSliderToValue(Number(e.target.value)))
-              setTargetDraft(null)
-            }}
-            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#10301d]/12 accent-[#1d4d31] outline-none"
+        {/* amount inputs — vary by planning mode */}
+        {mode === 'target' && (
+          <AmountField
+            label="Target amount"
+            value={target}
+            onChange={setTarget}
+            helper={inrWords(target)}
           />
-          <p className="text-[11px] text-[#10301d]/40">{inrWords(target)}</p>
-        </div>
-        ) : (
-        /* monthly SIP */
-        <div className="mt-5 space-y-2.5">
-          <div className="flex items-baseline justify-between">
-            <label className="text-[12px] font-semibold tracking-widest text-[#10301d]/55 uppercase">
-              Monthly SIP
-            </label>
-            <div className="flex items-stretch overflow-hidden rounded-lg border border-[#10301d]/15 bg-white focus-within:border-[#b5893a] focus-within:ring-2 focus-within:ring-[#b5893a]/25">
-              <span className="flex items-center bg-[#10301d]/5 px-2 text-[12px] font-medium text-[#10301d]/50">
-                ₹
-              </span>
-              <input
-                type="number"
-                aria-label="Monthly SIP amount"
-                value={sipDraft ?? monthlySip}
-                onChange={e => {
-                  setSipDraft(e.target.value)
-                  const v = Number(e.target.value.replace(/,/g, ''))
-                  if (Number.isFinite(v)) setMonthlySip(Math.min(v, MAX_SIP))
-                }}
-                onBlur={commitSip}
-                onKeyDown={e => e.key === 'Enter' && commitSip()}
-                className="w-24 [appearance:textfield] bg-transparent px-3 py-1.5 text-right text-[14px] font-semibold text-[#10301d] tabular-nums outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              />
-              <span className="flex items-center bg-[#10301d]/5 px-2 text-[12px] font-medium text-[#10301d]/50">
-                / mo
-              </span>
-            </div>
-          </div>
-
-          {/* preset pills */}
-          <div className="flex flex-wrap gap-1.5">
-            {SIP_PRESETS.map(p => (
-              <button
-                key={p.label}
-                type="button"
-                onClick={() => { setMonthlySip(p.value); setSipDraft(null) }}
-                className={`rounded px-2 py-0.5 text-[11px] font-semibold transition-colors ${
-                  monthlySip === p.value
-                    ? 'bg-[#1d4d31] text-[#f4efe2]'
-                    : 'border border-[#10301d]/20 text-[#10301d]/55 hover:border-[#1d4d31]/50 hover:text-[#1d4d31]'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-
-          <input
-            type="range"
-            aria-label="Monthly SIP slider"
-            value={Math.min(monthlySip, SIP_SLIDER_MAX)}
-            min={0}
-            max={SIP_SLIDER_MAX}
-            step={500}
-            onChange={e => {
-              setMonthlySip(Number(e.target.value))
-              setSipDraft(null)
-            }}
-            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#10301d]/12 accent-[#1d4d31] outline-none"
+        )}
+        {mode === 'sip' && (
+          <MonthlyField
+            label="Monthly SIP"
+            value={monthlySip}
+            onChange={setMonthlySip}
+            helper={`${inrWords(monthlySip)} a month — we’ll project the corpus it grows into`}
           />
-          <p className="text-[11px] text-[#10301d]/40">
-            {inrWords(monthlySip)} a month — we’ll project the corpus it grows into
-          </p>
-        </div>
+        )}
+        {mode === 'swp' && (
+          <>
+            <AmountField
+              label="Retirement corpus"
+              value={target}
+              onChange={setTarget}
+              helper={`${inrWords(target)} saved up — the pot you’ll draw from`}
+            />
+            <MonthlyField
+              label="Monthly withdrawal"
+              value={monthlySip}
+              onChange={setMonthlySip}
+              helper={`${inrWords(monthlySip)} a month to start — we’ll show how long it lasts`}
+            />
+          </>
         )}
 
         {/* years */}
         <div className="mt-5 space-y-2">
           <div className="flex items-baseline justify-between">
             <label className="text-[12px] font-semibold tracking-widest text-[#10301d]/55 uppercase">
-              Years to goal
+              {mode === 'swp' ? 'Plan for' : 'Years to goal'}
             </label>
             <span className={`text-lg font-medium text-[#10301d] ${displayFont.className}`}>
               {years} yr

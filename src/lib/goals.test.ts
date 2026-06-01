@@ -4,6 +4,8 @@ import {
   Goal,
   GOAL_DEFAULTS,
   calcGoal,
+  calcSwp,
+  formatYearsMonths,
   inr,
   inrWords,
   logSliderToValue,
@@ -245,6 +247,79 @@ describe('calcGoal — SIP-driven (forward) mode', () => {
     const c = calcGoal(legacy)
     expect(c.nominalTarget).toBe(1 * CRORE)
     expectClose(c.monthlySip, (1 * CRORE) / annuityDueFactor(12, 10), 1e-9)
+  })
+})
+
+describe('calcSwp — systematic withdrawal (decumulation)', () => {
+  // In SWP mode `target` is the corpus and `monthlySip` is the monthly withdrawal.
+  const swpGoal = (o: Partial<Goal> = {}) =>
+    goal({ mode: 'swp', target: 2 * CRORE, monthlySip: 50000, ...o })
+
+  it('reports the sustainable withdrawal that empties the corpus at the horizon', () => {
+    const base = calcSwp(swpGoal({ years: 25, annualReturn: 8, stepUp: 0 }))
+    // Drawing exactly that amount should run the corpus out right around year 25.
+    const tuned = calcSwp(
+      swpGoal({
+        years: 25,
+        annualReturn: 8,
+        stepUp: 0,
+        monthlySip: base.sustainableWithdrawal
+      })
+    )
+    expect(Math.abs(tuned.lastsMonths - 25 * 12)).toBeLessThanOrEqual(1)
+    expect(tuned.balanceAtHorizon).toBeLessThan(base.sustainableWithdrawal)
+    expect(tuned.depletesBeforeHorizon).toBe(false)
+  })
+
+  it('runs out early when withdrawing more than is sustainable', () => {
+    const base = calcSwp(swpGoal({ years: 25, annualReturn: 8, stepUp: 0 }))
+    const c = calcSwp(
+      swpGoal({
+        years: 25,
+        annualReturn: 8,
+        stepUp: 0,
+        monthlySip: base.sustainableWithdrawal * 1.5
+      })
+    )
+    expect(c.depletesBeforeHorizon).toBe(true)
+    expect(c.lastsMonths).toBeLessThan(25 * 12)
+    expect(c.balanceAtHorizon).toBe(0)
+  })
+
+  it('leaves money on the table — and can grow — when withdrawing modestly', () => {
+    const c = calcSwp(
+      swpGoal({ target: 5 * CRORE, monthlySip: 50000, years: 10, annualReturn: 8, stepUp: 0 })
+    )
+    expect(c.sustainable).toBe(true)
+    expect(c.depletesBeforeHorizon).toBe(false)
+    // Returns far outpace the withdrawals, so the corpus is larger at the horizon.
+    expect(c.balanceAtHorizon).toBeGreaterThan(c.corpus)
+    // No step-up and never depleted → total drawn is exactly the level amount.
+    expectClose(c.totalWithdrawn, 50000 * 120, 1e-9)
+  })
+
+  it('keeps real income flat when the step-up matches inflation', () => {
+    const c = calcSwp(
+      swpGoal({ years: 20, stepUp: 6, inflation: 6, monthlySip: 60000 })
+    )
+    expect(c.lastYearWithdrawal).toBeGreaterThan(c.firstWithdrawal)
+    expectClose(c.realLastWithdrawal, c.firstWithdrawal, 1e-9)
+  })
+
+  it('treats a long-lasting corpus as sustainable (capped longevity)', () => {
+    const c = calcSwp(swpGoal({ target: 10 * CRORE, monthlySip: 20000, stepUp: 0 }))
+    expect(c.sustainable).toBe(true)
+    expect(c.lastsMonths).toBe(1200)
+  })
+})
+
+describe('formatYearsMonths', () => {
+  it('humanises month counts', () => {
+    expect(formatYearsMonths(300)).toBe('25 years')
+    expect(formatYearsMonths(12)).toBe('1 year')
+    expect(formatYearsMonths(13)).toBe('1 yr 1 mo')
+    expect(formatYearsMonths(1)).toBe('1 month')
+    expect(formatYearsMonths(0)).toBe('0 months')
   })
 })
 

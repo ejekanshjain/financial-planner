@@ -7,7 +7,15 @@ import {
   Text,
   View
 } from '@react-pdf/renderer'
-import { calcGoal, CHART_PALETTE, Goal, inr, inrWords } from './goals'
+import {
+  calcGoal,
+  calcSwp,
+  CHART_PALETTE,
+  formatYearsMonths,
+  Goal,
+  inr,
+  inrWords
+} from './goals'
 import { SITE_NAME, SITE_URL } from './site'
 
 /* Bundled, rupee-capable subset fonts (served from /public/fonts). Registered
@@ -221,6 +229,139 @@ function Footer({ generatedAt }: { generatedAt: string }) {
   )
 }
 
+/** One full A4 page detailing a single SWP (withdrawal) goal. */
+function SwpPlanPage({
+  goal,
+  generatedAt
+}: {
+  goal: Goal
+  generatedAt: string
+}) {
+  const w = calcSwp(goal)
+  const swpMax = Math.max(w.corpus, ...w.series.map(p => p.balance), 1)
+  const endYear = w.series.at(-1)?.year ?? goal.years
+  const keepsPace = goal.stepUp >= goal.inflation
+
+  return (
+    <Page size="A4" style={s.page}>
+      <View style={s.header}>
+        <Text style={s.eyebrow}>{SITE_NAME}  ·  Withdrawal (SWP) Plan</Text>
+        <Text style={s.goalName}>{goal.name || 'Untitled Goal'}</Text>
+        <View style={s.badgeRow}>
+          <Text style={s.badge}>Planned by withdrawal</Text>
+          <Text style={s.badge}>{goal.years}-year plan</Text>
+          <Text style={s.badge}>{goal.annualReturn}% p.a. on corpus</Text>
+        </View>
+      </View>
+
+      <View style={s.body}>
+        {/* longevity hero */}
+        <View style={s.hero}>
+          <Text style={s.heroLabel}>
+            {w.sustainable
+              ? 'Your corpus is built to last'
+              : w.depletesBeforeHorizon
+                ? 'Heads up — your corpus runs out early'
+                : 'Your corpus lasts'}
+          </Text>
+          <Text style={s.heroValue}>
+            {w.sustainable ? '100+ yrs' : formatYearsMonths(w.lastsMonths)}
+          </Text>
+          <Text style={s.heroSub}>
+            Drawing {inrWords(w.monthlyWithdrawal)} a month, rising +{goal.stepUp}
+            % a year, from a {inrWords(w.corpus)} corpus growing at{' '}
+            {goal.annualReturn}%.
+            {w.sustainable
+              ? ' Withdrawals stay within its growth.'
+              : w.depletesBeforeHorizon
+                ? ` It empties before the ${goal.years}-year plan ends.`
+                : ''}
+          </Text>
+        </View>
+
+        {/* stats */}
+        <View style={s.statRow}>
+          <Stat label="Total withdrawn" value={inrWords(w.totalWithdrawn)} />
+          <Stat
+            label={w.depletesBeforeHorizon ? 'Runs out in' : `Left after ${goal.years} yr`}
+            value={
+              w.depletesBeforeHorizon
+                ? formatYearsMonths(w.lastsMonths)
+                : inrWords(w.balanceAtHorizon)
+            }
+          />
+          <Stat label="Monthly withdrawal" value={inrWords(w.monthlyWithdrawal)} />
+          <Stat
+            label={`Income in yr ${goal.years}`}
+            value={inrWords(w.lastYearWithdrawal)}
+          />
+        </View>
+
+        {/* income in today's money */}
+        <View style={s.power}>
+          <Text style={s.heroLabel}>
+            Income in today&rsquo;s money  ·  @ {goal.inflation}% inflation
+          </Text>
+          <Text style={s.powerValue}>{inr(w.realLastWithdrawal)} /mo</Text>
+          <Text style={s.powerNote}>
+            Your {inrWords(w.monthlyWithdrawal)}/mo today rises to{' '}
+            {inrWords(w.lastYearWithdrawal)}/mo by year {goal.years} — worth{' '}
+            {inrWords(w.realLastWithdrawal)}/mo in today&rsquo;s money.{' '}
+            {keepsPace
+              ? 'Your step-up keeps pace with inflation.'
+              : 'Inflation outpaces your step-up, so real income slips over time.'}
+          </Text>
+        </View>
+
+        {/* assumptions */}
+        <Text style={s.sectionTitle}>Plan assumptions</Text>
+        <View style={s.assumeWrap}>
+          <Assume k="Starting corpus" v={inr(w.corpus)} />
+          <Assume k="Monthly withdrawal" v={inr(w.monthlyWithdrawal)} />
+          <Assume k="Return on corpus" v={`${goal.annualReturn}% p.a.`} />
+          <Assume k="Withdrawal step-up" v={`${goal.stepUp}% / yr`} />
+          <Assume k="Assumed inflation" v={`${goal.inflation}% p.a.`} />
+          <Assume k="Planning horizon" v={`${goal.years} years`} />
+          <Assume
+            k={`Lasts ${goal.years} yrs at`}
+            v={`${inr(w.sustainableWithdrawal)}/mo`}
+          />
+        </View>
+
+        {/* corpus drawdown */}
+        <Text style={s.sectionTitle}>Corpus drawdown</Text>
+        <View style={s.th}>
+          <Text style={[s.cYear, s.cHead]}>Year</Text>
+          <Text style={[s.cNum, s.cHead]}>Withdrawn</Text>
+          <Text style={[s.cNum, s.cHead]}>Balance</Text>
+          <View style={s.cBar} />
+        </View>
+        {w.series.map(row => {
+          const pct = swpMax > 0 ? (row.balance / swpMax) * 100 : 0
+          return (
+            <View style={s.tr} key={row.year} wrap={false}>
+              <Text style={s.cYear}>{row.year}</Text>
+              <Text style={s.cNum}>{inrWords(row.withdrawn)}</Text>
+              <Text style={s.cNum}>{inrWords(row.balance)}</Text>
+              <View style={s.cBar}>
+                <View style={s.barTrack}>
+                  <View style={[s.barFill, { width: `${pct}%` }]} />
+                </View>
+              </View>
+            </View>
+          )
+        })}
+        <Text style={[s.footerText, { marginTop: 8 }]}>
+          Chart shows the corpus balance at the end of each year (drawdown ends at
+          year {endYear}).
+        </Text>
+      </View>
+
+      <Footer generatedAt={generatedAt} />
+    </Page>
+  )
+}
+
 /** One full A4 page detailing a single goal's plan — shared by both documents. */
 function GoalPlanPage({
   goal,
@@ -229,6 +370,9 @@ function GoalPlanPage({
   goal: Goal
   generatedAt: string
 }) {
+  if (goal.mode === 'swp')
+    return <SwpPlanPage goal={goal} generatedAt={generatedAt} />
+
   const c = calcGoal(goal)
   const isSip = goal.mode === 'sip'
   const maxValue = c.series.at(-1)?.value ?? 1
@@ -396,16 +540,31 @@ function GoalsSummaryPage({
   goals: Goal[]
   generatedAt: string
 }) {
-  const rows = goals.map((goal, i) => ({
-    goal,
-    calc: calcGoal(goal),
-    color: CHART_PALETTE[i % CHART_PALETTE.length] ?? '#1d4d31'
-  }))
-  const totalSip = rows.reduce((sum, r) => sum + r.calc.monthlySip, 0)
-  const totalWealth = rows.reduce((sum, r) => sum + r.calc.nominalTarget, 0)
-  const totalInvested = rows.reduce((sum, r) => sum + r.calc.invested, 0)
-  const totalGain = rows.reduce((sum, r) => sum + r.calc.gain, 0)
-  const totalToday = rows.reduce((sum, r) => sum + r.calc.todayValue, 0)
+  const rows = goals.map((goal, i) => {
+    const isSwp = goal.mode === 'swp'
+    const calc = isSwp ? null : calcGoal(goal)
+    const swp = isSwp ? calcSwp(goal) : null
+    return {
+      goal,
+      isSwp,
+      calc,
+      swp,
+      color: CHART_PALETTE[i % CHART_PALETTE.length] ?? '#1d4d31',
+      monthly: isSwp ? swp!.monthlyWithdrawal : calc!.monthlySip,
+      wealth: isSwp ? swp!.corpus : calc!.nominalTarget
+    }
+  })
+  const accum = rows.filter(r => !r.isSwp)
+  const totalSip = accum.reduce((sum, r) => sum + r.calc!.monthlySip, 0)
+  const totalWealth = accum.reduce((sum, r) => sum + r.calc!.nominalTarget, 0)
+  const totalInvested = accum.reduce((sum, r) => sum + r.calc!.invested, 0)
+  const totalGain = accum.reduce((sum, r) => sum + r.calc!.gain, 0)
+  const totalToday = accum.reduce((sum, r) => sum + r.calc!.todayValue, 0)
+  const totalIncome = rows
+    .filter(r => r.isSwp)
+    .reduce((sum, r) => sum + r.swp!.monthlyWithdrawal, 0)
+  const hasAccum = accum.length > 0
+  const hasSwp = rows.some(r => r.isSwp)
   const maxYears = goals.reduce((m, g) => Math.max(m, g.years), 0)
 
   return (
@@ -417,7 +576,12 @@ function GoalsSummaryPage({
           <Text style={s.badge}>
             {goals.length} {goals.length === 1 ? 'goal' : 'goals'}
           </Text>
-          <Text style={s.badge}>{inrWords(totalSip)}/mo total SIP</Text>
+          {hasAccum && (
+            <Text style={s.badge}>{inrWords(totalSip)}/mo SIP</Text>
+          )}
+          {hasSwp && (
+            <Text style={s.badge}>{inrWords(totalIncome)}/mo income</Text>
+          )}
           <Text style={s.badge}>up to {maxYears}-year horizon</Text>
         </View>
       </View>
@@ -428,7 +592,10 @@ function GoalsSummaryPage({
           <Stat label="Total monthly SIP" value={inrWords(totalSip)} />
           <Stat label="Total future wealth" value={inrWords(totalWealth)} />
           <Stat label="Total invested" value={inrWords(totalInvested)} />
-          <Stat label="Wealth gained" value={inrWords(totalGain)} />
+          <Stat
+            label={hasSwp ? 'Monthly income' : 'Wealth gained'}
+            value={inrWords(hasSwp ? totalIncome : totalGain)}
+          />
         </View>
 
         {/* combined purchasing power */}
@@ -436,23 +603,28 @@ function GoalsSummaryPage({
           <Text style={s.heroLabel}>Combined value in today&rsquo;s money</Text>
           <Text style={s.powerValue}>{inr(totalToday)}</Text>
           <Text style={s.powerNote}>
-            Your goals total {inrWords(totalWealth)} at their horizons — worth
-            about {inrWords(totalToday)} in today&rsquo;s purchasing power once
-            inflation is accounted for.
+            Your accumulation goals total {inrWords(totalWealth)} at their
+            horizons — worth about {inrWords(totalToday)} in today&rsquo;s
+            purchasing power once inflation is accounted for.
+            {hasSwp
+              ? ` Plus ${inrWords(totalIncome)}/mo of withdrawal income from ${
+                  rows.filter(r => r.isSwp).length
+                } SWP ${rows.filter(r => r.isSwp).length === 1 ? 'plan' : 'plans'}.`
+              : ''}
           </Text>
         </View>
 
-        {/* SIP allocation */}
+        {/* SIP allocation (accumulation goals only) */}
         {totalSip > 0 && (
           <>
             <Text style={s.sectionTitle}>Monthly SIP allocation</Text>
             <View style={s.allocBar}>
-              {rows.map(r =>
-                r.calc.monthlySip > 0 ? (
+              {accum.map(r =>
+                r.monthly > 0 ? (
                   <View
                     key={r.goal.id}
                     style={{
-                      width: `${(r.calc.monthlySip / totalSip) * 100}%`,
+                      width: `${(r.monthly / totalSip) * 100}%`,
                       backgroundColor: r.color
                     }}
                   />
@@ -460,14 +632,12 @@ function GoalsSummaryPage({
               )}
             </View>
             <View style={s.legendWrap}>
-              {rows.map(r => (
+              {accum.map(r => (
                 <View key={r.goal.id} style={s.legendItem}>
                   <View style={[s.legendDot, { backgroundColor: r.color }]} />
                   <Text style={s.legendText}>
-                    {r.goal.name || 'Untitled'} — {inrWords(r.calc.monthlySip)}/mo
-                    {totalSip > 0
-                      ? ` (${((r.calc.monthlySip / totalSip) * 100).toFixed(0)}%)`
-                      : ''}
+                    {r.goal.name || 'Untitled'} — {inrWords(r.monthly)}/mo
+                    {` (${((r.monthly / totalSip) * 100).toFixed(0)}%)`}
                   </Text>
                 </View>
               ))}
@@ -481,8 +651,8 @@ function GoalsSummaryPage({
           <Text style={[s.gName, s.cHead]}>Goal</Text>
           <Text style={[s.gMode, s.cHead]}>Plan</Text>
           <Text style={[s.gYrs, s.cHead]}>Horizon</Text>
-          <Text style={[s.gNum, s.cHead]}>Monthly SIP</Text>
-          <Text style={[s.gNum, s.cHead]}>Future wealth</Text>
+          <Text style={[s.gNum, s.cHead]}>Monthly</Text>
+          <Text style={[s.gNum, s.cHead]}>{hasSwp ? 'Wealth / corpus' : 'Future wealth'}</Text>
         </View>
         {rows.map(r => (
           <View key={r.goal.id} style={s.tr} wrap={false}>
@@ -493,11 +663,11 @@ function GoalsSummaryPage({
               <Text>{r.goal.name || 'Untitled'}</Text>
             </View>
             <Text style={s.gMode}>
-              {r.goal.mode === 'sip' ? 'By SIP' : 'By target'}
+              {r.isSwp ? 'Withdrawal' : r.goal.mode === 'sip' ? 'By SIP' : 'By target'}
             </Text>
             <Text style={s.gYrs}>{r.goal.years} yr</Text>
-            <Text style={s.gNum}>{inrWords(r.calc.monthlySip)}</Text>
-            <Text style={s.gNum}>{inrWords(r.calc.nominalTarget)}</Text>
+            <Text style={s.gNum}>{inrWords(r.monthly)}</Text>
+            <Text style={s.gNum}>{inrWords(r.wealth)}</Text>
           </View>
         ))}
 

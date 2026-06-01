@@ -8,6 +8,7 @@ import {
   GoalCalc,
   buildShareUrl,
   calcGoal,
+  calcSwp,
   downloadGoals,
   inrWords,
   parseGoalsFile,
@@ -258,11 +259,18 @@ export function Dashboard({
       })),
     [goals]
   )
-  const totalSip = pairs.reduce((s, p) => s + p.calc.monthlySip, 0)
-  const totalTarget = pairs.reduce((s, p) => s + p.calc.nominalTarget, 0)
+  // Accumulation goals (target/sip) drive the SIP totals and allocation; SWP
+  // goals are decumulation and are summarised separately as monthly income.
+  const accumPairs = pairs.filter(p => p.goal.mode !== 'swp')
+  const swpGoals = goals.filter(g => g.mode === 'swp')
+  const totalSip = accumPairs.reduce((s, p) => s + p.calc.monthlySip, 0)
+  const totalTarget = accumPairs.reduce((s, p) => s + p.calc.nominalTarget, 0)
+  const totalIncome = swpGoals.reduce((s, g) => s + calcSwp(g).monthlyWithdrawal, 0)
   const maxYears = goals.length ? Math.max(...goals.map(g => g.years)) : 0
 
   const hasGoals = goals.length > 0
+  const hasAccum = accumPairs.length > 0
+  const hasSwp = swpGoals.length > 0
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -342,8 +350,9 @@ export function Dashboard({
             </h1>
             {hasGoals && (
               <p className="mt-3 text-[15px] text-[#10301d]/55">
-                {goals.length} {goals.length === 1 ? 'goal' : 'goals'} · ₹
-                {inrWords(totalSip).replace('₹', '')}/mo total SIP
+                {goals.length} {goals.length === 1 ? 'goal' : 'goals'}
+                {hasAccum && ` · ${inrWords(totalSip)}/mo SIP`}
+                {hasSwp && ` · ${inrWords(totalIncome)}/mo income`}
               </p>
             )}
           </div>
@@ -546,16 +555,26 @@ export function Dashboard({
           <div className="space-y-8">
             {/* summary stats */}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
-              <StatTile
-                label="Total monthly SIP"
-                value={inrWords(totalSip)}
-                sub={`across ${goals.length} ${goals.length === 1 ? 'goal' : 'goals'}`}
-                className="col-span-2 sm:col-span-1"
-              />
-              <StatTile
-                label="Total target wealth"
-                value={inrWords(totalTarget)}
-              />
+              {hasAccum && (
+                <StatTile
+                  label="Total monthly SIP"
+                  value={inrWords(totalSip)}
+                  sub={`across ${accumPairs.length} ${accumPairs.length === 1 ? 'goal' : 'goals'}`}
+                />
+              )}
+              {hasAccum && (
+                <StatTile
+                  label="Total target wealth"
+                  value={inrWords(totalTarget)}
+                />
+              )}
+              {hasSwp && (
+                <StatTile
+                  label="Monthly income"
+                  value={inrWords(totalIncome)}
+                  sub={`from ${swpGoals.length} withdrawal ${swpGoals.length === 1 ? 'plan' : 'plans'}`}
+                />
+              )}
               <StatTile
                 label="Longest horizon"
                 value={`${maxYears} years`}
@@ -563,13 +582,11 @@ export function Dashboard({
               />
             </div>
 
-            {/* analytics (only when >1 goal) */}
-            {goals.length > 1 && (
-              <>
-                <SipAllocation pairs={pairs} />
-                <GoalTimeline pairs={pairs} />
-              </>
-            )}
+            {/* SIP allocation needs at least two contributing goals */}
+            {accumPairs.length > 1 && <SipAllocation pairs={accumPairs} />}
+
+            {/* timeline spans every goal's horizon */}
+            {goals.length > 1 && <GoalTimeline pairs={pairs} />}
 
             {/* goal cards grid */}
             <div>

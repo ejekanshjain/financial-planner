@@ -7,8 +7,11 @@ export const MAX_SIP = 50 * 1e5
  * How a goal is planned:
  * - `target` — the user enters a target wealth and we solve for the monthly SIP.
  * - `sip`    — the user enters a monthly SIP and we project the corpus it grows into.
+ * - `swp`    — decumulation: the user has a corpus and withdraws a monthly income
+ *              from it. Here `target` is reused as the starting corpus and
+ *              `monthlySip` as the starting monthly withdrawal.
  */
-export type GoalMode = 'target' | 'sip'
+export type GoalMode = 'target' | 'sip' | 'swp'
 
 export interface Goal {
   id: string
@@ -20,12 +23,13 @@ export interface Goal {
    * The amount the user typed for "target wealth". When `inflateTarget` is
    * false this is the nominal future value; when true it is today's
    * purchasing power and the real (nominal) target is grown by inflation.
-   * Only used when `mode === 'target'`.
+   * Used when `mode === 'target'`; reused as the starting corpus in `swp` mode.
    */
   target: number
   /**
-   * The monthly SIP the user starts with. Only used when `mode === 'sip'`,
-   * where the target wealth becomes a projected output instead of an input.
+   * The monthly SIP the user starts with. Used when `mode === 'sip'` (where the
+   * target wealth becomes a projected output); reused as the starting monthly
+   * withdrawal in `swp` mode.
    */
   monthlySip: number
   years: number
@@ -103,6 +107,20 @@ export const SIP_PRESETS = [
   { label: '₹1L', value: 1_00_000 },
   { label: '₹2L', value: 2_00_000 }
 ]
+
+/**
+ * Sensible starting points for a new SWP (withdrawal) goal. The corpus reuses
+ * the `target` field and the withdrawal reuses `monthlySip`; returns default
+ * lower than equity SIPs since a drawdown corpus is usually more conservative.
+ */
+export const SWP_DEFAULTS = {
+  corpus: 2 * CRORE,
+  withdrawal: 50_000,
+  annualReturn: 8,
+  stepUp: 6,
+  inflation: 6,
+  years: 25
+}
 
 export const CHART_PALETTE = [
   '#1d4d31',
@@ -206,6 +224,119 @@ export function calcGoal(goal: Goal): GoalCalc {
   }
 }
 
+/* ── SWP (systematic withdrawal plan) ─────────────────────── */
+/** Longevity simulation cap — a corpus that survives this is treated as perpetual. */
+export const SWP_MAX_MONTHS = 1200 // 100 years
+
+export interface SwpCalc {
+  /** Starting corpus (Goal.target) and starting monthly withdrawal (Goal.monthlySip). */
+  corpus: number
+  monthlyWithdrawal: number
+  /** Months the corpus sustains withdrawals, capped at SWP_MAX_MONTHS. */
+  lastsMonths: number
+  /** True when withdrawals never exhaust the corpus within the cap (effectively perpetual). */
+  sustainable: boolean
+  /** True when the corpus runs out before the planning horizon ends. */
+  depletesBeforeHorizon: boolean
+  /** Balance remaining at the end of the planning horizon (0 if already depleted). */
+  balanceAtHorizon: number
+  /** Total cash withdrawn over the horizon (or until depletion, whichever comes first). */
+  totalWithdrawn: number
+  /** Starting and final-horizon-year monthly withdrawal (nominal). */
+  firstWithdrawal: number
+  lastYearWithdrawal: number
+  /** Final-year withdrawal expressed in today's purchasing power. */
+  realLastWithdrawal: number
+  /** The monthly withdrawal that would deplete the corpus exactly at the horizon. */
+  sustainableWithdrawal: number
+  series: { year: number; balance: number; withdrawn: number }[]
+}
+
+/**
+ * Decumulation plan: starting from `corpus` (Goal.target), withdraw
+ * `monthlyWithdrawal` (Goal.monthlySip) at the start of each month — rising by
+ * the annual step-up — while the remaining balance grows at `annualReturn`.
+ * Reports how long the corpus lasts, the balance left at the horizon, and the
+ * real (inflation-adjusted) value of the income.
+ */
+export function calcSwp(goal: Goal): SwpCalc {
+  const corpus = Math.max(0, goal.target)
+  const monthlyWithdrawal = Math.max(0, goal.monthlySip)
+  const years = goal.years
+  const monthlyRate = goal.annualReturn / 100 / 12
+  const stepFactor = 1 + goal.stepUp / 100
+  const horizonMonths = Math.max(1, Math.round(years * 12))
+
+  // Sustainable withdrawal that depletes the corpus exactly at the horizon. The
+  // denominator is the same step-up annuity factor used for accumulation, and
+  // `corpus * (1+r)^n` is the corpus grown over the horizon if left untouched.
+  let factor = 0
+  for (let m = 1; m <= horizonMonths; m++) {
+    const yearIdx = Math.floor((m - 1) / 12)
+    factor = (factor + stepFactor ** yearIdx) * (1 + monthlyRate)
+  }
+  const corpusGrown = corpus * (1 + monthlyRate) ** horizonMonths
+  const sustainableWithdrawal = factor > 0 ? corpusGrown / factor : 0
+
+  // Simulate the drawdown month by month up to the longevity cap.
+  let bal = corpus
+  let totalWithdrawn = 0
+  let balanceAtHorizon = 0
+  let depleted = false
+  let lastsMonths = SWP_MAX_MONTHS
+  const series: { year: number; balance: number; withdrawn: number }[] = []
+  for (let m = 1; m <= SWP_MAX_MONTHS; m++) {
+    const yearIdx = Math.floor((m - 1) / 12)
+    const want = monthlyWithdrawal * stepFactor ** yearIdx
+    const startBal = bal
+    let paid: number
+    if (startBal <= want) {
+      // The corpus can't cover a full withdrawal — take what's left and stop.
+      paid = startBal
+      bal = 0
+      depleted = true
+      lastsMonths = m
+    } else {
+      paid = want
+      bal = (startBal - want) * (1 + monthlyRate)
+    }
+    if (m <= horizonMonths) {
+      totalWithdrawn += paid
+      if (m === horizonMonths) balanceAtHorizon = bal
+      if (m % 12 === 0 || m === horizonMonths || depleted) {
+        series.push({
+          year: Math.ceil(m / 12),
+          balance: Math.max(0, bal),
+          withdrawn: totalWithdrawn
+        })
+      }
+    }
+    if (depleted) break
+  }
+
+  const sustainable = !depleted // survived the full cap without running out
+  const depletesBeforeHorizon = depleted && lastsMonths < horizonMonths
+  const lastYearWithdrawal =
+    monthlyWithdrawal * stepFactor ** Math.max(0, years - 1)
+  const realLastWithdrawal =
+    lastYearWithdrawal / (1 + goal.inflation / 100) ** Math.max(0, years - 1)
+
+  return {
+    corpus,
+    monthlyWithdrawal,
+    lastsMonths,
+    sustainable,
+    depletesBeforeHorizon,
+    balanceAtHorizon: Math.max(0, balanceAtHorizon),
+    totalWithdrawn,
+    firstWithdrawal: monthlyWithdrawal,
+    lastYearWithdrawal,
+    realLastWithdrawal,
+    sustainableWithdrawal,
+    series
+  }
+}
+
 /* ── log-scale slider (0-1000 ↔ 0 to MAX_TARGET) ─────────── */
 const LOG_MIN = 1e5
 const LOG_MAX = MAX_TARGET
@@ -247,6 +378,16 @@ export function inrWords(n: number) {
   if (n >= 1e5) return `₹${trim(n / 1e5)} L`
   if (n >= 1e3) return `₹${trim(n / 1e3)} K`
   return inr(n)
+}
+
+/** Humanise a whole number of months, e.g. 30 → "2 yr 6 mo", 24 → "2 years". */
+export function formatYearsMonths(months: number): string {
+  const total = Math.max(0, Math.round(months))
+  const y = Math.floor(total / 12)
+  const m = total % 12
+  if (y <= 0) return `${m} month${m === 1 ? '' : 's'}`
+  if (m === 0) return `${y} year${y === 1 ? '' : 's'}`
+  return `${y} yr ${m} mo`
 }
 
 /* ── localStorage ─────────────────────────────────────────── */
@@ -303,7 +444,7 @@ function normalizeGoal(raw: unknown): Goal {
     name,
     icon: typeof g.icon === 'string' && g.icon ? g.icon : '🎯',
     // Older exports predate `mode`; default them to the target-driven plan.
-    mode: g.mode === 'sip' ? 'sip' : 'target',
+    mode: g.mode === 'sip' || g.mode === 'swp' ? g.mode : 'target',
     target: clamp(num(g.target, GOAL_DEFAULTS.target), 0, MAX_TARGET),
     monthlySip: clamp(num(g.monthlySip, GOAL_DEFAULTS.monthlySip), 0, MAX_SIP),
     years: clamp(Math.round(num(g.years, GOAL_DEFAULTS.years)), 1, 50),

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { displayFont } from '~/lib/fonts'
 import {
   calcGoal,
+  calcSwp,
+  formatYearsMonths,
   Goal,
   GOAL_ICONS,
   GoalMode,
@@ -14,6 +16,7 @@ import {
   MAX_TARGET,
   SIP_PRESETS,
   SIP_SLIDER_MAX,
+  SwpCalc,
   TARGET_PRESETS,
   valueToLogSlider
 } from '~/lib/goals'
@@ -268,14 +271,15 @@ function ModeToggle({
   onChange: (m: GoalMode) => void
 }) {
   const options: { value: GoalMode; label: string; hint: string }[] = [
-    { value: 'target', label: 'By target', hint: 'I know the amount I want' },
-    { value: 'sip', label: 'By SIP', hint: 'I know what I can invest' }
+    { value: 'target', label: 'By target', hint: 'Reach an amount' },
+    { value: 'sip', label: 'By SIP', hint: 'Grow a monthly invest' },
+    { value: 'swp', label: 'Withdraw', hint: 'Income from a corpus' }
   ]
   return (
     <div
       role="tablist"
       aria-label="Planning mode"
-      className="grid grid-cols-2 gap-1 rounded-xl bg-[#10301d]/6 p-1"
+      className="grid grid-cols-3 gap-1 rounded-xl bg-[#10301d]/6 p-1"
     >
       {options.map(o => {
         const active = mode === o.value
@@ -286,20 +290,22 @@ function ModeToggle({
             aria-selected={active}
             type="button"
             onClick={() => onChange(o.value)}
-            className={`rounded-lg px-3 py-2 text-left transition-all ${
+            className={`rounded-lg px-2.5 py-2 text-left transition-all ${
               active
                 ? 'bg-[#fffdf7] shadow-[0_1px_6px_-2px_rgba(16,48,29,0.4)]'
                 : 'hover:bg-[#fffdf7]/50'
             }`}
           >
             <span
-              className={`block text-[13px] font-semibold ${
+              className={`block text-[12.5px] font-semibold ${
                 active ? 'text-[#10301d]' : 'text-[#10301d]/55'
               }`}
             >
               {o.label}
             </span>
-            <span className="block text-[11px] text-[#10301d]/45">{o.hint}</span>
+            <span className="block text-[10.5px] leading-tight text-[#10301d]/45">
+              {o.hint}
+            </span>
           </button>
         )
       })}
@@ -307,13 +313,17 @@ function ModeToggle({
   )
 }
 
-/* ── monthly-SIP field (drives the corpus in 'sip' mode) ───── */
+/* ── monthly-amount field (SIP in 'sip' mode, withdrawal in 'swp') ── */
 function SipField({
   value,
-  onChange
+  onChange,
+  label = 'Monthly SIP',
+  helper
 }: {
   value: number
   onChange: (n: number) => void
+  label?: string
+  helper?: React.ReactNode
 }) {
   const [draft, setDraft] = useState<string | null>(null)
 
@@ -327,7 +337,7 @@ function SipField({
     <div className="space-y-2.5">
       <div className="flex items-baseline justify-between gap-3">
         <label className="text-[13px] font-medium tracking-wide text-[#10301d]/80 uppercase">
-          Monthly SIP
+          {label}
         </label>
         <div className="flex items-stretch overflow-hidden rounded-md border border-[#10301d]/15 bg-[#fffdf7] focus-within:border-[#b5893a] focus-within:ring-2 focus-within:ring-[#b5893a]/25">
           <span className="flex items-center bg-[#10301d]/5 px-2.5 text-[13px] font-medium text-[#10301d]/55">
@@ -336,7 +346,7 @@ function SipField({
           <input
             type="number"
             inputMode="decimal"
-            aria-label="Monthly SIP amount"
+            aria-label={`${label} amount`}
             value={draft ?? value}
             min={0}
             max={MAX_SIP}
@@ -375,7 +385,7 @@ function SipField({
 
       <input
         type="range"
-        aria-label="Monthly SIP slider"
+        aria-label={`${label} slider`}
         value={Math.min(value, SIP_SLIDER_MAX)}
         min={0}
         max={SIP_SLIDER_MAX}
@@ -384,7 +394,56 @@ function SipField({
         className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#10301d]/12 accent-[#1d4d31] outline-none"
       />
       <p className="text-xs text-[#10301d]/45">
-        {inrWords(value)} a month to start, before any step-up
+        {helper ?? `${inrWords(value)} a month to start, before any step-up`}
+      </p>
+    </div>
+  )
+}
+
+/* ── corpus field (the starting pot in 'swp' mode) ───────────── */
+function CorpusField({
+  value,
+  onChange
+}: {
+  value: number
+  onChange: (n: number) => void
+}) {
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <label className="text-[13px] font-medium tracking-wide text-[#10301d]/80 uppercase">
+          Retirement corpus
+        </label>
+        <MoneyField value={value} onChange={onChange} label="Retirement corpus" />
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {TARGET_PRESETS.map(p => (
+          <button
+            key={p.label}
+            type="button"
+            onClick={() => onChange(p.value)}
+            className={`rounded px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+              value === p.value
+                ? 'bg-[#1d4d31] text-[#f4efe2]'
+                : 'border border-[#10301d]/20 text-[#10301d]/55 hover:border-[#1d4d31]/50 hover:text-[#1d4d31]'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <input
+        type="range"
+        aria-label="Retirement corpus slider"
+        value={valueToLogSlider(value)}
+        min={0}
+        max={1000}
+        step={1}
+        onChange={e => onChange(logSliderToValue(Number(e.target.value)))}
+        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#10301d]/12 accent-[#1d4d31] outline-none"
+      />
+      <p className="text-xs text-[#10301d]/45">
+        {inrWords(value)} saved up — the pot you&rsquo;ll draw an income from
       </p>
     </div>
   )
@@ -436,6 +495,154 @@ function Stat({ label, value }: { label: string; value: string }) {
         {value}
       </p>
     </div>
+  )
+}
+
+/* ── SWP (withdrawal) results panel ───────────────────────── */
+function SwpResults({
+  swp,
+  corpus,
+  withdrawal,
+  stepUp,
+  annualReturn,
+  years,
+  inflation
+}: {
+  swp: SwpCalc
+  corpus: number
+  withdrawal: number
+  stepUp: number
+  annualReturn: number
+  years: number
+  inflation: number
+}) {
+  const swpMax = Math.max(corpus, ...swp.series.map(p => p.balance), 1)
+  const endYear = swp.series.at(-1)?.year ?? years
+  const keepsPace = stepUp >= inflation
+
+  return (
+    <>
+      {/* longevity hero */}
+      <div
+        className="rounded-2xl p-6 text-[#f4efe2] shadow-[0_20px_50px_-20px_rgba(16,48,29,0.6)] sm:p-8"
+        style={{
+          background: `linear-gradient(155deg, ${FOREST_SOFT} 0%, ${FOREST} 70%)`
+        }}
+      >
+        <p className="text-[11px] font-semibold tracking-[0.25em] text-[#f4efe2]/60 uppercase">
+          {swp.sustainable
+            ? 'Your corpus is built to last'
+            : swp.depletesBeforeHorizon
+              ? 'Heads up — your corpus runs out early'
+              : 'Your corpus lasts'}
+        </p>
+        <p
+          className={`mt-2 text-5xl leading-none tracking-tight text-[#f4efe2] sm:text-6xl ${displayFont.className}`}
+        >
+          {swp.sustainable ? '100+ yrs' : formatYearsMonths(swp.lastsMonths)}
+        </p>
+        <p className="mt-2 text-sm text-[#f4efe2]/70">
+          Drawing{' '}
+          <span className="font-semibold text-[#d8b877]">
+            {inrWords(withdrawal)}
+          </span>
+          /mo, rising{' '}
+          <span className="font-semibold text-[#d8b877]">+{stepUp}%</span> a year,
+          from a{' '}
+          <span className="font-semibold text-[#d8b877]">
+            {inrWords(corpus)}
+          </span>{' '}
+          corpus growing at{' '}
+          <span className="font-semibold text-[#d8b877]">{annualReturn}%</span>.
+          {swp.sustainable
+            ? ' Withdrawals stay within its growth.'
+            : swp.depletesBeforeHorizon
+              ? ` It empties before your ${years}-year plan ends.`
+              : ''}
+        </p>
+        <div className="mt-7 grid grid-cols-3 gap-4 border-t border-[#f4efe2]/12 pt-6">
+          <Stat label="Total withdrawn" value={inrWords(swp.totalWithdrawn)} />
+          <Stat
+            label={swp.depletesBeforeHorizon ? 'Runs out in' : `Left after ${years} yr`}
+            value={
+              swp.depletesBeforeHorizon
+                ? formatYearsMonths(swp.lastsMonths)
+                : inrWords(swp.balanceAtHorizon)
+            }
+          />
+          <Stat
+            label={`Income in yr ${years}`}
+            value={inrWords(swp.lastYearWithdrawal)}
+          />
+        </div>
+      </div>
+
+      {/* income in today's money */}
+      <div className="rounded-2xl border-2 border-dashed border-[#b5893a]/45 bg-[#fffdf7] p-6 sm:p-7">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[11px] font-semibold tracking-[0.25em] text-[#b5893a] uppercase">
+            Income in today&rsquo;s money
+          </p>
+          <span className="rounded-full bg-[#b5893a]/12 px-2.5 py-1 text-[11px] font-semibold text-[#8a6722]">
+            @ {inflation}% inflation
+          </span>
+        </div>
+        <p
+          className={`mt-2 text-4xl text-[#10301d] sm:text-5xl ${displayFont.className}`}
+        >
+          {inr(swp.realLastWithdrawal)}
+          <span className="text-xl text-[#10301d]/45"> /mo</span>
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-[#10301d]/60">
+          Your {inrWords(withdrawal)}/mo today rises to{' '}
+          <span className="font-semibold text-[#10301d]">
+            {inrWords(swp.lastYearWithdrawal)}/mo
+          </span>{' '}
+          by year {years} — worth{' '}
+          <span className="font-semibold text-[#10301d]">
+            {inrWords(swp.realLastWithdrawal)}/mo
+          </span>{' '}
+          in today&rsquo;s money.{' '}
+          {keepsPace
+            ? 'Your step-up keeps pace with inflation.'
+            : 'Inflation outpaces your step-up, so real income slips over time.'}
+        </p>
+      </div>
+
+      {/* corpus drawdown chart */}
+      <div className="rounded-2xl border border-[#10301d]/10 bg-[#fffdf7] p-6 sm:p-7">
+        <div className="mb-5 flex items-center justify-between">
+          <h3 className={`text-lg text-[#10301d] ${displayFont.className}`}>
+            Corpus drawdown
+          </h3>
+          <span className="flex items-center gap-1.5 text-[11px] text-[#10301d]/55">
+            <span className="h-2.5 w-2.5 rounded-[3px] bg-[#1d4d31]" /> Balance
+          </span>
+        </div>
+        <div className="flex h-40 items-end gap-0.75">
+          {swp.series.map(d => {
+            const h = (d.balance / swpMax) * 100
+            return (
+              <div
+                key={d.year}
+                className="group relative flex flex-1 flex-col justify-end"
+                style={{ height: '100%' }}
+                title={`Year ${d.year} · Balance ${inrWords(d.balance)} · Withdrawn ${inrWords(d.withdrawn)}`}
+              >
+                <div
+                  className="w-full rounded-t-[3px] bg-[#1d4d31] transition-opacity group-hover:opacity-80"
+                  style={{ height: `${h}%` }}
+                />
+              </div>
+            )
+          })}
+        </div>
+        <div className="mt-2 flex justify-between text-[11px] text-[#10301d]/40">
+          <span>Yr 1</span>
+          <span>Yr {endYear}</span>
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -542,7 +749,9 @@ export function GoalDetail({
       inflateTarget
     ]
   )
+  const isSwp = mode === 'swp'
   const calc = useMemo(() => calcGoal(currentGoal), [currentGoal])
+  const swp = useMemo(() => calcSwp(currentGoal), [currentGoal])
   const maxValue = calc.series.at(-1)?.value ?? 1
 
   const handleIconSelect = useCallback((emoji: string) => {
@@ -746,7 +955,21 @@ export function GoalDetail({
             </h2>
             <ModeToggle mode={mode} onChange={setMode} />
             <div className="mt-7 space-y-7">
-              {mode === 'sip' ? (
+              {isSwp ? (
+                <>
+                  <CorpusField value={target} onChange={setTarget} />
+                  <SipField
+                    value={monthlySip}
+                    onChange={setMonthlySip}
+                    label="Monthly withdrawal"
+                    helper={
+                      swp.sustainableWithdrawal > 0
+                        ? `≈ ${inrWords(swp.sustainableWithdrawal)}/mo would last exactly ${years} years`
+                        : undefined
+                    }
+                  />
+                </>
+              ) : mode === 'sip' ? (
                 <SipField value={monthlySip} onChange={setMonthlySip} />
               ) : (
                 <TargetField
@@ -758,9 +981,9 @@ export function GoalDetail({
                   inflation={inflation}
                 />
               )}
-              <LumpSumField value={lumpSum} onChange={setLumpSum} />
+              {!isSwp && <LumpSumField value={lumpSum} onChange={setLumpSum} />}
               <Field
-                label="Years to goal"
+                label={isSwp ? 'Plan for' : 'Years to goal'}
                 value={years}
                 onChange={n => setYears(Math.round(n))}
                 min={1}
@@ -769,24 +992,32 @@ export function GoalDetail({
                 suffix="yrs"
               />
               <Field
-                label="Expected return"
+                label={isSwp ? 'Return on corpus' : 'Expected return'}
                 value={annualReturn}
                 onChange={setAnnualReturn}
                 min={1}
                 max={30}
                 step={0.5}
                 suffix="% p.a."
-                helper="Equity mutual funds have historically averaged ~12% over the long run."
+                helper={
+                  isSwp
+                    ? 'A drawdown corpus is usually held more conservatively — often 7–9% p.a.'
+                    : 'Equity mutual funds have historically averaged ~12% over the long run.'
+                }
               />
               <Field
-                label="Annual step-up"
+                label={isSwp ? 'Withdrawal step-up' : 'Annual step-up'}
                 value={stepUp}
                 onChange={setStepUp}
                 min={0}
                 max={50}
                 step={1}
                 suffix="% / yr"
-                helper="How much you raise the monthly SIP every year."
+                helper={
+                  isSwp
+                    ? 'How much you raise your monthly withdrawal each year to keep up with prices.'
+                    : 'How much you raise the monthly SIP every year.'
+                }
               />
               <Field
                 label="Inflation"
@@ -796,20 +1027,36 @@ export function GoalDetail({
                 max={15}
                 step={0.5}
                 suffix="% p.a."
-                helper="Used to find today's purchasing power of your target."
+                helper={
+                  isSwp
+                    ? "Used to value your future income in today's money."
+                    : "Used to find today's purchasing power of your target."
+                }
               />
             </div>
           </section>
 
           {/* results */}
           <section className="space-y-6">
-            {/* hero SIP */}
-            <div
-              className="rounded-2xl p-6 text-[#f4efe2] shadow-[0_20px_50px_-20px_rgba(16,48,29,0.6)] sm:p-8"
-              style={{
-                background: `linear-gradient(155deg, ${FOREST_SOFT} 0%, ${FOREST} 70%)`
-              }}
-            >
+            {isSwp ? (
+              <SwpResults
+                swp={swp}
+                corpus={target}
+                withdrawal={monthlySip}
+                stepUp={stepUp}
+                annualReturn={annualReturn}
+                years={years}
+                inflation={inflation}
+              />
+            ) : (
+              <>
+                {/* hero SIP */}
+                <div
+                  className="rounded-2xl p-6 text-[#f4efe2] shadow-[0_20px_50px_-20px_rgba(16,48,29,0.6)] sm:p-8"
+                  style={{
+                    background: `linear-gradient(155deg, ${FOREST_SOFT} 0%, ${FOREST} 70%)`
+                  }}
+                >
               {mode === 'sip' ? (
                 <>
                   <p className="text-[11px] font-semibold tracking-[0.25em] text-[#f4efe2]/60 uppercase">
@@ -991,7 +1238,9 @@ export function GoalDetail({
                 <span>Yr 1</span>
                 <span>Yr {years}</span>
               </div>
-            </div>
+                </div>
+              </>
+            )}
           </section>
         </div>
 
@@ -1006,9 +1255,9 @@ export function GoalDetail({
         </div>
 
         <p className="mt-8 text-center text-xs leading-relaxed text-[#10301d]/40">
-          Estimates assume monthly compounding with contributions at the start
-          of each month and an annual step-up. Actual mutual-fund returns vary
-          and are not guaranteed.
+          {isSwp
+            ? 'Estimates assume monthly compounding with withdrawals at the start of each month and an annual step-up. Actual returns vary and are not guaranteed.'
+            : 'Estimates assume monthly compounding with contributions at the start of each month and an annual step-up. Actual mutual-fund returns vary and are not guaranteed.'}
         </p>
       </div>
 

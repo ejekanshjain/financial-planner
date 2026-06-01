@@ -1,5 +1,5 @@
 import type { UIMessage } from 'ai'
-import { calcGoal, Goal, inr, inrWords } from './goals'
+import { calcGoal, calcSwp, formatYearsMonths, Goal, inr, inrWords } from './goals'
 
 /* ── localStorage persistence ─────────────────────────────── */
 const CHAT_STORAGE_KEY = 'financial-planner-chat'
@@ -56,8 +56,34 @@ export function buildFinancialContext(goals: Goal[]): string {
   const lines: string[] = []
   let totalSip = 0
   let totalTarget = 0
+  let totalIncome = 0
 
   goals.forEach((goal, i) => {
+    if (goal.mode === 'swp') {
+      // Decumulation goal — summarise via the withdrawal model instead.
+      const w = calcSwp(goal)
+      totalIncome += w.monthlyWithdrawal
+      lines.push(
+        [
+          `${i + 1}. ${goal.icon} ${goal.name}`,
+          `   - Planning mode: SWP / withdrawal (user draws a monthly income from a corpus)`,
+          `   - Starting corpus: ${inrWords(w.corpus)} (${inr(w.corpus)})`,
+          `   - Monthly withdrawal (now): ${inr(w.monthlyWithdrawal)}, rising ${goal.stepUp}%/yr`,
+          `   - Return on the corpus while drawing down: ${goal.annualReturn}%`,
+          `   - How long it lasts: ${
+            w.sustainable
+              ? 'over 100 years — effectively sustainable at this rate'
+              : formatYearsMonths(w.lastsMonths)
+          }`,
+          `   - Planning horizon: ${goal.years} years; balance left at the horizon: ${inrWords(w.balanceAtHorizon)}`,
+          `   - Final-year withdrawal: ${inr(w.lastYearWithdrawal)}/mo (${inrWords(w.realLastWithdrawal)}/mo in today’s money at ${goal.inflation}% inflation)`,
+          `   - Total withdrawn over the horizon: ${inrWords(w.totalWithdrawn)}`,
+          `   - A ${inrWords(w.sustainableWithdrawal)}/mo withdrawal would last exactly ${goal.years} years`
+        ].join('\n')
+      )
+      return
+    }
+
     const c = calcGoal(goal)
     const sipMode = goal.mode === 'sip'
     totalSip += c.monthlySip
@@ -89,12 +115,23 @@ export function buildFinancialContext(goals: Goal[]): string {
     )
   })
 
+  const totals = [
+    totalSip > 0
+      ? `Combined required monthly SIP across accumulation goals: ${inr(totalSip)}.`
+      : null,
+    totalTarget > 0
+      ? `Combined target/projected wealth: ${inrWords(totalTarget)}.`
+      : null,
+    totalIncome > 0
+      ? `Combined monthly income from withdrawal (SWP) goals: ${inr(totalIncome)}.`
+      : null
+  ].filter(Boolean)
+
   return [
     `The user currently has ${goals.length} financial goal(s):`,
     '',
     lines.join('\n\n'),
     '',
-    `Combined required monthly SIP across all goals: ${inr(totalSip)}.`,
-    `Combined target wealth: ${inrWords(totalTarget)}.`
+    ...totals
   ].join('\n')
 }

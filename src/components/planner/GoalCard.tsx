@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { displayFont } from '~/lib/fonts'
-import { Goal, calcGoal, inrWords } from '~/lib/goals'
+import { calcGoal, calcSwp, formatYearsMonths, Goal, inrWords } from '~/lib/goals'
 
 export function GoalCard({
   goal,
@@ -13,11 +13,18 @@ export function GoalCard({
   onClick: () => void
   onDelete: () => void
 }) {
+  const isSwp = goal.mode === 'swp'
   const calc = useMemo(() => calcGoal(goal), [goal])
+  const swp = useMemo(() => calcSwp(goal), [goal])
   const investedPct =
     calc.nominalTarget > 0
       ? Math.min(100, (calc.invested / calc.nominalTarget) * 100)
       : 0
+  // How much of the planning horizon the corpus actually covers (capped at 100%).
+  const coveragePct = Math.min(
+    100,
+    (swp.lastsMonths / Math.max(1, goal.years * 12)) * 100
+  )
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   return (
@@ -44,10 +51,10 @@ export function GoalCard({
             </h3>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
               <span className="inline-block rounded-full bg-[#10301d]/8 px-2 py-0.5 text-[11px] font-medium text-[#10301d]/55">
-                {goal.years} yr goal
+                {goal.years} yr {isSwp ? 'plan' : 'goal'}
               </span>
               <span className="inline-block rounded-full bg-[#b5893a]/15 px-2 py-0.5 text-[11px] font-medium text-[#8a6722]">
-                {goal.mode === 'sip' ? 'by SIP' : 'by target'}
+                {isSwp ? 'withdrawal' : goal.mode === 'sip' ? 'by SIP' : 'by target'}
               </span>
             </div>
           </div>
@@ -97,26 +104,48 @@ export function GoalCard({
       <div className="mt-4 grid grid-cols-2 gap-4">
         <div>
           <p className="text-[11px] font-semibold tracking-widest text-[#10301d]/45 uppercase">
-            {goal.mode === 'sip' ? 'Projected' : 'Target'}
+            {isSwp ? 'Corpus' : goal.mode === 'sip' ? 'Projected' : 'Target'}
           </p>
           <p
             className={`mt-0.5 text-[22px] leading-none text-[#10301d] ${displayFont.className}`}
           >
-            {inrWords(calc.nominalTarget)}
+            {inrWords(isSwp ? swp.corpus : calc.nominalTarget)}
           </p>
         </div>
         <div>
           <p className="text-[11px] font-semibold tracking-widest text-[#10301d]/45 uppercase">
-            Monthly SIP
+            {isSwp ? 'Withdrawal' : 'Monthly SIP'}
           </p>
           <p
             className={`mt-0.5 text-[22px] leading-none text-[#1d4d31] ${displayFont.className}`}
           >
-            {inrWords(calc.monthlySip)}
+            {inrWords(isSwp ? swp.monthlyWithdrawal : calc.monthlySip)}
+            {isSwp && (
+              <span className="text-[13px] text-[#1d4d31]/55"> /mo</span>
+            )}
           </p>
         </div>
       </div>
 
+      {isSwp ? (
+        <div className="mt-4 space-y-1.5">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#10301d]/8">
+            <div
+              className="h-full rounded-full bg-[#1d4d31]"
+              style={{ width: `${coveragePct}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-[10px] text-[#10301d]/40">
+            <span>
+              Lasts{' '}
+              {swp.sustainable
+                ? '100+ yrs'
+                : formatYearsMonths(swp.lastsMonths)}
+            </span>
+            <span>{inrWords(swp.totalWithdrawn)} drawn</span>
+          </div>
+        </div>
+      ) : (
       <div className="mt-4 space-y-1.5">
         <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-[#10301d]/8">
           <div
@@ -130,6 +159,7 @@ export function GoalCard({
           <span>Market returns {inrWords(calc.gain)}</span>
         </div>
       </div>
+      )}
 
       {/* delete confirmation overlay */}
       {confirmDelete && (
