@@ -12,11 +12,25 @@ import {
   calcSwp,
   CHART_PALETTE,
   formatYearsMonths,
-  Goal,
-  inr,
-  inrWords
+  Goal
 } from './goals'
+import {
+  formatCompact,
+  formatMoney,
+  localeTag,
+  PlannerLocale,
+  profileFor
+} from './locale'
 import { SITE_NAME, SITE_URL } from './site'
+
+function pdfFmt(locale: PlannerLocale) {
+  const copy = profileFor(locale).copy
+  return {
+    money: (n: number) => formatMoney(n, locale),
+    compact: (n: number) => formatCompact(n, locale),
+    copy
+  }
+}
 
 /* Bundled, rupee-capable subset fonts (served from /public/fonts). Registered
  * once at module load; @react-pdf fetches them when a PDF is generated. */
@@ -138,7 +152,13 @@ const s = StyleSheet.create({
   /* assumptions */
   assumeWrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 18 },
   assumeItem: { width: '50%', paddingVertical: 4, paddingRight: 10 },
-  assumeKey: { fontSize: 7.5, color: '#10301d', opacity: 0.5, textTransform: 'uppercase', letterSpacing: 0.5 },
+  assumeKey: {
+    fontSize: 7.5,
+    color: '#10301d',
+    opacity: 0.5,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
+  },
   assumeVal: { fontSize: 10, color: FOREST, fontWeight: 'bold', marginTop: 1 },
   /* table */
   th: {
@@ -155,7 +175,13 @@ const s = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#eef0ed'
   },
-  cHead: { fontSize: 7.5, color: '#10301d', opacity: 0.55, textTransform: 'uppercase', letterSpacing: 0.5 },
+  cHead: {
+    fontSize: 7.5,
+    color: '#10301d',
+    opacity: 0.55,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
+  },
   cYear: { width: '12%', fontSize: 9 },
   cNum: { width: '24%', fontSize: 9, textAlign: 'right', paddingRight: 8 },
   cBar: { width: '16%', justifyContent: 'center' },
@@ -214,14 +240,16 @@ function Assume({ k, v }: { k: string; v: string }) {
   )
 }
 
-function Footer({ generatedAt }: { generatedAt: string }) {
+function Footer({
+  generatedAt,
+  disclaimer
+}: {
+  generatedAt: string
+  disclaimer: string
+}) {
   return (
     <View style={s.footer} fixed>
-      <Text style={s.footerText}>
-        Projections assume monthly compounding with contributions at the start of
-        each month and an annual step-up. Actual mutual-fund returns vary and are
-        not guaranteed. Not investment advice.
-      </Text>
+      <Text style={s.footerText}>{disclaimer} Not investment advice.</Text>
       <Text style={s.footerText}>
         Generated {generatedAt} · {SITE_URL.replace(/^https?:\/\//, '')}
       </Text>
@@ -232,11 +260,14 @@ function Footer({ generatedAt }: { generatedAt: string }) {
 /** One full A4 page detailing a single SWP (withdrawal) goal. */
 function SwpPlanPage({
   goal,
-  generatedAt
+  generatedAt,
+  locale
 }: {
   goal: Goal
   generatedAt: string
+  locale: PlannerLocale
 }) {
+  const { money, compact, copy } = pdfFmt(locale)
   const w = calcSwp(goal)
   const swpMax = Math.max(w.corpus, ...w.series.map(p => p.balance), 1)
   const endYear = w.series.at(-1)?.year ?? goal.years
@@ -245,7 +276,7 @@ function SwpPlanPage({
   return (
     <Page size="A4" style={s.page}>
       <View style={s.header}>
-        <Text style={s.eyebrow}>{SITE_NAME}  ·  Withdrawal (SWP) Plan</Text>
+        <Text style={s.eyebrow}>{SITE_NAME} · Withdrawal (SWP) Plan</Text>
         <Text style={s.goalName}>{goal.name || 'Untitled Goal'}</Text>
         <View style={s.badgeRow}>
           <Text style={s.badge}>Planned by withdrawal</Text>
@@ -268,8 +299,8 @@ function SwpPlanPage({
             {w.sustainable ? '100+ yrs' : formatYearsMonths(w.lastsMonths)}
           </Text>
           <Text style={s.heroSub}>
-            Drawing {inrWords(w.monthlyWithdrawal)} a month, rising +{goal.stepUp}
-            % a year, from a {inrWords(w.corpus)} corpus growing at{' '}
+            Drawing {compact(w.monthlyWithdrawal)} a month, rising +
+            {goal.stepUp}% a year, from a {compact(w.corpus)} corpus growing at{' '}
             {goal.annualReturn}%.
             {w.sustainable
               ? ' Withdrawals stay within its growth.'
@@ -281,32 +312,39 @@ function SwpPlanPage({
 
         {/* stats */}
         <View style={s.statRow}>
-          <Stat label="Total withdrawn" value={inrWords(w.totalWithdrawn)} />
+          <Stat label="Total withdrawn" value={compact(w.totalWithdrawn)} />
           <Stat
-            label={w.depletesBeforeHorizon ? 'Runs out in' : `Left after ${goal.years} yr`}
+            label={
+              w.depletesBeforeHorizon
+                ? 'Runs out in'
+                : `Left after ${goal.years} yr`
+            }
             value={
               w.depletesBeforeHorizon
                 ? formatYearsMonths(w.lastsMonths)
-                : inrWords(w.balanceAtHorizon)
+                : compact(w.balanceAtHorizon)
             }
           />
-          <Stat label="Monthly withdrawal" value={inrWords(w.monthlyWithdrawal)} />
+          <Stat
+            label="Monthly withdrawal"
+            value={compact(w.monthlyWithdrawal)}
+          />
           <Stat
             label={`Income in yr ${goal.years}`}
-            value={inrWords(w.lastYearWithdrawal)}
+            value={compact(w.lastYearWithdrawal)}
           />
         </View>
 
         {/* income in today's money */}
         <View style={s.power}>
           <Text style={s.heroLabel}>
-            Income in today&rsquo;s money  ·  @ {goal.inflation}% inflation
+            Income in today&rsquo;s money · @ {goal.inflation}% inflation
           </Text>
-          <Text style={s.powerValue}>{inr(w.realLastWithdrawal)} /mo</Text>
+          <Text style={s.powerValue}>{money(w.realLastWithdrawal)} /mo</Text>
           <Text style={s.powerNote}>
-            Your {inrWords(w.monthlyWithdrawal)}/mo today rises to{' '}
-            {inrWords(w.lastYearWithdrawal)}/mo by year {goal.years} — worth{' '}
-            {inrWords(w.realLastWithdrawal)}/mo in today&rsquo;s money.{' '}
+            Your {compact(w.monthlyWithdrawal)}/mo today rises to{' '}
+            {compact(w.lastYearWithdrawal)}/mo by year {goal.years} — worth{' '}
+            {compact(w.realLastWithdrawal)}/mo in today&rsquo;s money.{' '}
             {keepsPace
               ? 'Your step-up keeps pace with inflation.'
               : 'Inflation outpaces your step-up, so real income slips over time.'}
@@ -316,15 +354,15 @@ function SwpPlanPage({
         {/* assumptions */}
         <Text style={s.sectionTitle}>Plan assumptions</Text>
         <View style={s.assumeWrap}>
-          <Assume k="Starting corpus" v={inr(w.corpus)} />
-          <Assume k="Monthly withdrawal" v={inr(w.monthlyWithdrawal)} />
+          <Assume k="Starting corpus" v={money(w.corpus)} />
+          <Assume k="Monthly withdrawal" v={money(w.monthlyWithdrawal)} />
           <Assume k="Return on corpus" v={`${goal.annualReturn}% p.a.`} />
           <Assume k="Withdrawal step-up" v={`${goal.stepUp}% / yr`} />
           <Assume k="Assumed inflation" v={`${goal.inflation}% p.a.`} />
           <Assume k="Planning horizon" v={`${goal.years} years`} />
           <Assume
             k={`Lasts ${goal.years} yrs at`}
-            v={`${inr(w.sustainableWithdrawal)}/mo`}
+            v={`${money(w.sustainableWithdrawal)}/mo`}
           />
         </View>
 
@@ -341,8 +379,8 @@ function SwpPlanPage({
           return (
             <View style={s.tr} key={row.year} wrap={false}>
               <Text style={s.cYear}>{row.year}</Text>
-              <Text style={s.cNum}>{inrWords(row.withdrawn)}</Text>
-              <Text style={s.cNum}>{inrWords(row.balance)}</Text>
+              <Text style={s.cNum}>{compact(row.withdrawn)}</Text>
+              <Text style={s.cNum}>{compact(row.balance)}</Text>
               <View style={s.cBar}>
                 <View style={s.barTrack}>
                   <View style={[s.barFill, { width: `${pct}%` }]} />
@@ -352,12 +390,12 @@ function SwpPlanPage({
           )
         })}
         <Text style={[s.footerText, { marginTop: 8 }]}>
-          Chart shows the corpus balance at the end of each year (drawdown ends at
-          year {endYear}).
+          Chart shows the corpus balance at the end of each year (drawdown ends
+          at year {endYear}).
         </Text>
       </View>
 
-      <Footer generatedAt={generatedAt} />
+      <Footer generatedAt={generatedAt} disclaimer={copy.disclaimer} />
     </Page>
   )
 }
@@ -365,161 +403,169 @@ function SwpPlanPage({
 /** One full A4 page detailing a single goal's plan — shared by both documents. */
 function GoalPlanPage({
   goal,
-  generatedAt
+  generatedAt,
+  locale
 }: {
   goal: Goal
   generatedAt: string
+  locale: PlannerLocale
 }) {
   if (goal.mode === 'swp')
-    return <SwpPlanPage goal={goal} generatedAt={generatedAt} />
+    return <SwpPlanPage goal={goal} generatedAt={generatedAt} locale={locale} />
 
+  const { money, compact, copy } = pdfFmt(locale)
   const c = calcGoal(goal)
   const isSip = goal.mode === 'sip'
   const maxValue = c.series.at(-1)?.value ?? 1
   const stepLine = `+${goal.stepUp}% a year for ${goal.years} years`
   const lumpLine =
-    goal.lumpSum > 0 ? `, plus a ${inrWords(goal.lumpSum)} lump sum` : ''
+    goal.lumpSum > 0 ? `, plus a ${compact(goal.lumpSum)} lump sum` : ''
 
   return (
     <Page size="A4" style={s.page}>
       {/* header */}
       <View style={s.header}>
-          <Text style={s.eyebrow}>{SITE_NAME}  ·  SIP Goal Plan</Text>
-          <Text style={s.goalName}>{goal.name || 'Untitled Goal'}</Text>
-          <View style={s.badgeRow}>
-            <Text style={s.badge}>
-              {isSip ? 'Planned by SIP' : 'Planned by target'}
-            </Text>
-            <Text style={s.badge}>{goal.years}-year horizon</Text>
-            <Text style={s.badge}>{goal.annualReturn}% p.a. assumed</Text>
-          </View>
+        <Text style={s.eyebrow}>{SITE_NAME} · Goal Plan</Text>
+        <Text style={s.goalName}>{goal.name || 'Untitled Goal'}</Text>
+        <View style={s.badgeRow}>
+          <Text style={s.badge}>
+            {isSip ? `Planned ${copy.byContribution}` : 'Planned by target'}
+          </Text>
+          <Text style={s.badge}>{goal.years}-year horizon</Text>
+          <Text style={s.badge}>{goal.annualReturn}% p.a. assumed</Text>
+        </View>
+      </View>
+
+      <View style={s.body}>
+        {/* hero result */}
+        <View style={s.hero}>
+          {isSip ? (
+            <>
+              <Text style={s.heroLabel}>
+                Projected corpus in {goal.years} years
+              </Text>
+              <Text style={s.heroValue}>{money(c.nominalTarget)}</Text>
+              <Text style={s.heroSub}>
+                Investing {compact(goal.monthlySip)} a month, stepped up{' '}
+                {stepLine}
+                {lumpLine}.
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={s.heroLabel}>
+                {c.monthlySip > 0
+                  ? `Required ${copy.monthlyContribution.toLowerCase()}`
+                  : 'Lump sum already covers this'}
+              </Text>
+              <Text style={s.heroValue}>{money(c.monthlySip)}</Text>
+              <Text style={s.heroSub}>
+                {c.monthlySip > 0
+                  ? `${compact(c.monthlySip)} per month, then ${stepLine}${lumpLine}.`
+                  : `Your ${compact(goal.lumpSum)} lump sum grows to ${compact(c.lumpFutureValue)} on its own.`}
+              </Text>
+            </>
+          )}
         </View>
 
-        <View style={s.body}>
-          {/* hero result */}
-          <View style={s.hero}>
-            {isSip ? (
-              <>
-                <Text style={s.heroLabel}>
-                  Projected corpus in {goal.years} years
-                </Text>
-                <Text style={s.heroValue}>{inr(c.nominalTarget)}</Text>
-                <Text style={s.heroSub}>
-                  Investing {inrWords(goal.monthlySip)} a month, stepped up{' '}
-                  {stepLine}
-                  {lumpLine}.
-                </Text>
-              </>
-            ) : (
-              <>
-                <Text style={s.heroLabel}>
-                  {c.monthlySip > 0
-                    ? 'Required monthly SIP'
-                    : 'Lump sum already covers this'}
-                </Text>
-                <Text style={s.heroValue}>{inr(c.monthlySip)}</Text>
-                <Text style={s.heroSub}>
-                  {c.monthlySip > 0
-                    ? `${inrWords(c.monthlySip)} per month, then ${stepLine}${lumpLine}.`
-                    : `Your ${inrWords(goal.lumpSum)} lump sum grows to ${inrWords(c.lumpFutureValue)} on its own.`}
-                </Text>
-              </>
-            )}
-          </View>
+        {/* stats */}
+        <View style={s.statRow}>
+          <Stat label="Total invested" value={compact(c.invested)} />
+          <Stat label="Wealth gained" value={compact(c.gain)} />
+          <Stat
+            label={isSip ? copy.monthlyContribution : 'Target wealth'}
+            value={isSip ? compact(goal.monthlySip) : compact(c.nominalTarget)}
+          />
+          <Stat
+            label={copy.contributionInYear(goal.years)}
+            value={compact(c.lastYearMonthly)}
+          />
+        </View>
 
-          {/* stats */}
-          <View style={s.statRow}>
-            <Stat label="Total invested" value={inrWords(c.invested)} />
-            <Stat label="Wealth gained" value={inrWords(c.gain)} />
-            <Stat
-              label={isSip ? 'Monthly SIP' : 'Target wealth'}
-              value={isSip ? inrWords(goal.monthlySip) : inrWords(c.nominalTarget)}
-            />
-            <Stat
-              label={`SIP in yr ${goal.years}`}
-              value={inrWords(c.lastYearMonthly)}
-            />
-          </View>
+        {/* purchasing power */}
+        <View style={s.power}>
+          <Text style={s.heroLabel}>
+            Today&rsquo;s purchasing power · @ {goal.inflation}% inflation
+          </Text>
+          <Text style={s.powerValue}>{money(c.todayValue)}</Text>
+          <Text style={s.powerNote}>
+            {compact(c.nominalTarget)} in {goal.years} years buys what{' '}
+            {compact(c.todayValue)} buys today — inflation erodes about{' '}
+            {c.erodedPct.toFixed(0)}% of its value.
+          </Text>
+        </View>
 
-          {/* purchasing power */}
-          <View style={s.power}>
-            <Text style={s.heroLabel}>
-              Today&rsquo;s purchasing power  ·  @ {goal.inflation}% inflation
-            </Text>
-            <Text style={s.powerValue}>{inr(c.todayValue)}</Text>
-            <Text style={s.powerNote}>
-              {inrWords(c.nominalTarget)} in {goal.years} years buys what{' '}
-              {inrWords(c.todayValue)} buys today — inflation erodes about{' '}
-              {c.erodedPct.toFixed(0)}% of its value.
-            </Text>
-          </View>
-
-          {/* assumptions */}
-          <Text style={s.sectionTitle}>Plan assumptions</Text>
-          <View style={s.assumeWrap}>
-            <Assume k="Time horizon" v={`${goal.years} years`} />
-            <Assume k="Expected return" v={`${goal.annualReturn}% p.a.`} />
-            <Assume k="Annual step-up" v={`${goal.stepUp}% / yr`} />
-            <Assume k="Assumed inflation" v={`${goal.inflation}% p.a.`} />
-            {isSip ? (
-              <Assume k="Starting monthly SIP" v={inr(goal.monthlySip)} />
-            ) : (
-              <Assume
-                k="Target wealth"
-                v={`${inrWords(c.nominalTarget)}${goal.inflateTarget ? ' (today’s money, inflated)' : ''}`}
-              />
-            )}
+        {/* assumptions */}
+        <Text style={s.sectionTitle}>Plan assumptions</Text>
+        <View style={s.assumeWrap}>
+          <Assume k="Time horizon" v={`${goal.years} years`} />
+          <Assume k="Expected return" v={`${goal.annualReturn}% p.a.`} />
+          <Assume k="Annual step-up" v={`${goal.stepUp}% / yr`} />
+          <Assume k="Assumed inflation" v={`${goal.inflation}% p.a.`} />
+          {isSip ? (
             <Assume
-              k="Lump sum today"
-              v={
-                goal.lumpSum > 0
-                  ? `${inr(goal.lumpSum)} (grows to ${inrWords(c.lumpFutureValue)})`
-                  : 'None'
-              }
+              k={`Starting ${copy.monthlyContribution.toLowerCase()}`}
+              v={money(goal.monthlySip)}
             />
-          </View>
+          ) : (
+            <Assume
+              k="Target wealth"
+              v={`${compact(c.nominalTarget)}${goal.inflateTarget ? ' (today’s money, inflated)' : ''}`}
+            />
+          )}
+          <Assume
+            k="Lump sum today"
+            v={
+              goal.lumpSum > 0
+                ? `${money(goal.lumpSum)} (grows to ${compact(c.lumpFutureValue)})`
+                : 'None'
+            }
+          />
+        </View>
 
-          {/* year-by-year */}
-          <Text style={s.sectionTitle}>Year-by-year growth</Text>
-          <View style={s.th}>
-            <Text style={[s.cYear, s.cHead]}>Year</Text>
-            <Text style={[s.cNum, s.cHead]}>Invested</Text>
-            <Text style={[s.cNum, s.cHead]}>Value</Text>
-            <Text style={[s.cNum, s.cHead]}>Returns</Text>
-            <View style={s.cBar} />
-          </View>
-          {c.series.map(row => {
-            const pct = maxValue > 0 ? (row.value / maxValue) * 100 : 0
-            return (
-              <View style={s.tr} key={row.year} wrap={false}>
-                <Text style={s.cYear}>{row.year}</Text>
-                <Text style={s.cNum}>{inrWords(row.invested)}</Text>
-                <Text style={s.cNum}>{inrWords(row.value)}</Text>
-                <Text style={s.cNum}>
-                  {inrWords(Math.max(0, row.value - row.invested))}
-                </Text>
-                <View style={s.cBar}>
-                  <View style={s.barTrack}>
-                    <View style={[s.barFill, { width: `${pct}%` }]} />
-                  </View>
+        {/* year-by-year */}
+        <Text style={s.sectionTitle}>Year-by-year growth</Text>
+        <View style={s.th}>
+          <Text style={[s.cYear, s.cHead]}>Year</Text>
+          <Text style={[s.cNum, s.cHead]}>Invested</Text>
+          <Text style={[s.cNum, s.cHead]}>Value</Text>
+          <Text style={[s.cNum, s.cHead]}>Returns</Text>
+          <View style={s.cBar} />
+        </View>
+        {c.series.map(row => {
+          const pct = maxValue > 0 ? (row.value / maxValue) * 100 : 0
+          return (
+            <View style={s.tr} key={row.year} wrap={false}>
+              <Text style={s.cYear}>{row.year}</Text>
+              <Text style={s.cNum}>{compact(row.invested)}</Text>
+              <Text style={s.cNum}>{compact(row.value)}</Text>
+              <Text style={s.cNum}>
+                {compact(Math.max(0, row.value - row.invested))}
+              </Text>
+              <View style={s.cBar}>
+                <View style={s.barTrack}>
+                  <View style={[s.barFill, { width: `${pct}%` }]} />
                 </View>
               </View>
-            )
-          })}
-        </View>
+            </View>
+          )
+        })}
+      </View>
 
-        {/* footer repeated on every page */}
-        <Footer generatedAt={generatedAt} />
-      </Page>
+      {/* footer repeated on every page */}
+      <Footer generatedAt={generatedAt} disclaimer={copy.disclaimer} />
+    </Page>
   )
 }
 
 export function GoalPdfDocument({
   goal,
-  generatedAt
+  generatedAt,
+  locale
 }: {
   goal: Goal
   generatedAt: string
+  locale: PlannerLocale
 }) {
   return (
     <Document
@@ -527,7 +573,7 @@ export function GoalPdfDocument({
       author={SITE_NAME}
       creator={SITE_NAME}
     >
-      <GoalPlanPage goal={goal} generatedAt={generatedAt} />
+      <GoalPlanPage goal={goal} generatedAt={generatedAt} locale={locale} />
     </Document>
   )
 }
@@ -535,11 +581,14 @@ export function GoalPdfDocument({
 /** Portfolio cover page: combined totals, SIP allocation, and a goals table. */
 function GoalsSummaryPage({
   goals,
-  generatedAt
+  generatedAt,
+  locale
 }: {
   goals: Goal[]
   generatedAt: string
+  locale: PlannerLocale
 }) {
+  const { money, compact, copy } = pdfFmt(locale)
   const rows = goals.map((goal, i) => {
     const isSwp = goal.mode === 'swp'
     const calc = isSwp ? null : calcGoal(goal)
@@ -570,17 +619,19 @@ function GoalsSummaryPage({
   return (
     <Page size="A4" style={s.page}>
       <View style={s.header}>
-        <Text style={s.eyebrow}>{SITE_NAME}  ·  Portfolio Plan</Text>
+        <Text style={s.eyebrow}>{SITE_NAME} · Portfolio Plan</Text>
         <Text style={s.goalName}>My Financial Plan</Text>
         <View style={s.badgeRow}>
           <Text style={s.badge}>
             {goals.length} {goals.length === 1 ? 'goal' : 'goals'}
           </Text>
           {hasAccum && (
-            <Text style={s.badge}>{inrWords(totalSip)}/mo SIP</Text>
+            <Text style={s.badge}>
+              {compact(totalSip)}/mo {copy.contribution}
+            </Text>
           )}
           {hasSwp && (
-            <Text style={s.badge}>{inrWords(totalIncome)}/mo income</Text>
+            <Text style={s.badge}>{compact(totalIncome)}/mo income</Text>
           )}
           <Text style={s.badge}>up to {maxYears}-year horizon</Text>
         </View>
@@ -589,25 +640,25 @@ function GoalsSummaryPage({
       <View style={s.body}>
         {/* combined totals */}
         <View style={s.statRow}>
-          <Stat label="Total monthly SIP" value={inrWords(totalSip)} />
-          <Stat label="Total future wealth" value={inrWords(totalWealth)} />
-          <Stat label="Total invested" value={inrWords(totalInvested)} />
+          <Stat label={copy.monthlyContribution} value={compact(totalSip)} />
+          <Stat label="Total future wealth" value={compact(totalWealth)} />
+          <Stat label="Total invested" value={compact(totalInvested)} />
           <Stat
             label={hasSwp ? 'Monthly income' : 'Wealth gained'}
-            value={inrWords(hasSwp ? totalIncome : totalGain)}
+            value={compact(hasSwp ? totalIncome : totalGain)}
           />
         </View>
 
         {/* combined purchasing power */}
         <View style={s.power}>
           <Text style={s.heroLabel}>Combined value in today&rsquo;s money</Text>
-          <Text style={s.powerValue}>{inr(totalToday)}</Text>
+          <Text style={s.powerValue}>{money(totalToday)}</Text>
           <Text style={s.powerNote}>
-            Your accumulation goals total {inrWords(totalWealth)} at their
-            horizons — worth about {inrWords(totalToday)} in today&rsquo;s
+            Your accumulation goals total {compact(totalWealth)} at their
+            horizons — worth about {compact(totalToday)} in today&rsquo;s
             purchasing power once inflation is accounted for.
             {hasSwp
-              ? ` Plus ${inrWords(totalIncome)}/mo of withdrawal income from ${
+              ? ` Plus ${compact(totalIncome)}/mo of withdrawal income from ${
                   rows.filter(r => r.isSwp).length
                 } SWP ${rows.filter(r => r.isSwp).length === 1 ? 'plan' : 'plans'}.`
               : ''}
@@ -617,7 +668,7 @@ function GoalsSummaryPage({
         {/* SIP allocation (accumulation goals only) */}
         {totalSip > 0 && (
           <>
-            <Text style={s.sectionTitle}>Monthly SIP allocation</Text>
+            <Text style={s.sectionTitle}>{copy.allocationHeading}</Text>
             <View style={s.allocBar}>
               {accum.map(r =>
                 r.monthly > 0 ? (
@@ -636,7 +687,7 @@ function GoalsSummaryPage({
                 <View key={r.goal.id} style={s.legendItem}>
                   <View style={[s.legendDot, { backgroundColor: r.color }]} />
                   <Text style={s.legendText}>
-                    {r.goal.name || 'Untitled'} — {inrWords(r.monthly)}/mo
+                    {r.goal.name || 'Untitled'} — {compact(r.monthly)}/mo
                     {` (${((r.monthly / totalSip) * 100).toFixed(0)}%)`}
                   </Text>
                 </View>
@@ -646,13 +697,17 @@ function GoalsSummaryPage({
         )}
 
         {/* goals at a glance */}
-        <Text style={[s.sectionTitle, { marginTop: 16 }]}>Goals at a glance</Text>
+        <Text style={[s.sectionTitle, { marginTop: 16 }]}>
+          Goals at a glance
+        </Text>
         <View style={s.th}>
           <Text style={[s.gName, s.cHead]}>Goal</Text>
           <Text style={[s.gMode, s.cHead]}>Plan</Text>
           <Text style={[s.gYrs, s.cHead]}>Horizon</Text>
           <Text style={[s.gNum, s.cHead]}>Monthly</Text>
-          <Text style={[s.gNum, s.cHead]}>{hasSwp ? 'Wealth / corpus' : 'Future wealth'}</Text>
+          <Text style={[s.gNum, s.cHead]}>
+            {hasSwp ? 'Wealth / corpus' : 'Future wealth'}
+          </Text>
         </View>
         {rows.map(r => (
           <View key={r.goal.id} style={s.tr} wrap={false}>
@@ -663,11 +718,15 @@ function GoalsSummaryPage({
               <Text>{r.goal.name || 'Untitled'}</Text>
             </View>
             <Text style={s.gMode}>
-              {r.isSwp ? 'Withdrawal' : r.goal.mode === 'sip' ? 'By SIP' : 'By target'}
+              {r.isSwp
+                ? 'Withdrawal'
+                : r.goal.mode === 'sip'
+                  ? copy.planByContribution
+                  : 'By target'}
             </Text>
             <Text style={s.gYrs}>{r.goal.years} yr</Text>
-            <Text style={s.gNum}>{inrWords(r.monthly)}</Text>
-            <Text style={s.gNum}>{inrWords(r.wealth)}</Text>
+            <Text style={s.gNum}>{compact(r.monthly)}</Text>
+            <Text style={s.gNum}>{compact(r.wealth)}</Text>
           </View>
         ))}
 
@@ -676,34 +735,41 @@ function GoalsSummaryPage({
         </Text>
       </View>
 
-      <Footer generatedAt={generatedAt} />
+      <Footer generatedAt={generatedAt} disclaimer={copy.disclaimer} />
     </Page>
   )
 }
 
 export function GoalsPdfDocument({
   goals,
-  generatedAt
+  generatedAt,
+  locale
 }: {
   goals: Goal[]
   generatedAt: string
+  locale: PlannerLocale
 }) {
   return (
-    <Document
-      title="My financial plan"
-      author={SITE_NAME}
-      creator={SITE_NAME}
-    >
-      <GoalsSummaryPage goals={goals} generatedAt={generatedAt} />
+    <Document title="My financial plan" author={SITE_NAME} creator={SITE_NAME}>
+      <GoalsSummaryPage
+        goals={goals}
+        generatedAt={generatedAt}
+        locale={locale}
+      />
       {goals.map(goal => (
-        <GoalPlanPage key={goal.id} goal={goal} generatedAt={generatedAt} />
+        <GoalPlanPage
+          key={goal.id}
+          goal={goal}
+          generatedAt={generatedAt}
+          locale={locale}
+        />
       ))}
     </Document>
   )
 }
 
-const todayStamp = () =>
-  new Date().toLocaleDateString('en-IN', {
+const todayStamp = (locale: PlannerLocale) =>
+  new Date().toLocaleDateString(localeTag(locale.region), {
     day: 'numeric',
     month: 'short',
     year: 'numeric'
@@ -719,9 +785,16 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 /** Generate the plan PDF for a goal and trigger a browser download. */
-export async function downloadGoalPdf(goal: Goal): Promise<void> {
+export async function downloadGoalPdf(
+  goal: Goal,
+  locale: PlannerLocale
+): Promise<void> {
   const blob = await pdf(
-    <GoalPdfDocument goal={goal} generatedAt={todayStamp()} />
+    <GoalPdfDocument
+      goal={goal}
+      generatedAt={todayStamp(locale)}
+      locale={locale}
+    />
   ).toBlob()
 
   const safeName =
@@ -733,9 +806,16 @@ export async function downloadGoalPdf(goal: Goal): Promise<void> {
 }
 
 /** Generate a combined PDF — a portfolio summary plus a page per goal. */
-export async function downloadGoalsPdf(goals: Goal[]): Promise<void> {
+export async function downloadGoalsPdf(
+  goals: Goal[],
+  locale: PlannerLocale
+): Promise<void> {
   const blob = await pdf(
-    <GoalsPdfDocument goals={goals} generatedAt={todayStamp()} />
+    <GoalsPdfDocument
+      goals={goals}
+      generatedAt={todayStamp(locale)}
+      locale={locale}
+    />
   ).toBlob()
-  triggerDownload(blob, 'sip-financial-plan.pdf')
+  triggerDownload(blob, 'financial-plan.pdf')
 }

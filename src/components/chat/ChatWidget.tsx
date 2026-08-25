@@ -4,6 +4,7 @@ import { useChat } from '@ai-sdk/react'
 import { type UIMessage } from 'ai'
 import { useEffect, useRef, useState } from 'react'
 import { Streamdown } from 'streamdown'
+import { usePlannerLocale } from '~/components/locale/LocaleProvider'
 import {
   buildFinancialContext,
   clearChatStorage,
@@ -36,13 +37,6 @@ const MARKDOWN_CLASS = [
   '[&_hr]:my-3 [&_hr]:border-[#10301d]/10'
 ].join(' ')
 
-const SUGGESTIONS = [
-  'I earn ₹50,000/month — help me build a plan.',
-  'Am I investing enough for my goals?',
-  'How should I split my savings across these goals?',
-  'What if I increase my monthly SIP by 5%?'
-]
-
 /* ── render a single message's text parts ─────────────────── */
 function messageText(message: UIMessage): string {
   return message.parts
@@ -59,6 +53,7 @@ export function ChatWidget({
   /** Bumped by the parent when the user clears all data, to wipe the chat too. */
   clearSignal: number
 }) {
+  const { locale, profile } = usePlannerLocale()
   const [open, setOpen] = useState(false)
 
   const {
@@ -103,7 +98,7 @@ export function ChatWidget({
     // over their current plan, even after edits made since the last message.
     sendMessage(
       { text: trimmed },
-      { body: { financialContext: buildFinancialContext(goals) } }
+      { body: { financialContext: buildFinancialContext(goals, locale) } }
     )
     setInput('')
   }
@@ -222,7 +217,7 @@ export function ChatWidget({
                   invest each month. I can see your current goals.
                 </p>
                 <div className="flex w-full flex-col gap-2">
-                  {SUGGESTIONS.map(s => (
+                  {profile.copy.chatSuggestions.map(s => (
                     <button
                       key={s}
                       onClick={() => submit(s)}
@@ -387,7 +382,7 @@ function CopyButton({ text, align }: { text: string; align: boolean }) {
       onClick={copy}
       title={copied ? 'Copied' : 'Copy message'}
       aria-label={copied ? 'Copied to clipboard' : 'Copy message'}
-      className={`mt-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-[#10301d]/40 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:bg-[#10301d]/8 hover:text-[#10301d]/70 ${
+      className={`mt-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-[#10301d]/40 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-[#10301d]/8 hover:text-[#10301d]/70 focus-visible:opacity-100 ${
         align ? 'mr-1' : 'ml-1'
       }`}
     >
@@ -400,7 +395,11 @@ function CopyButton({ text, align }: { text: string; align: boolean }) {
             stroke="currentColor"
             strokeWidth={2.2}
           >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M5 13l4 4L19 7"
+            />
           </svg>
           Copied
         </>

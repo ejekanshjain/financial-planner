@@ -41,9 +41,7 @@ export function ServiceWorkerRegister() {
             })
           })
         })
-        .catch(err =>
-          console.warn('Service worker registration failed:', err)
-        )
+        .catch(err => console.warn('Service worker registration failed:', err))
     }
 
     // Wait for load so the SW never competes with the initial render.

@@ -4,7 +4,7 @@
  * calculator works with no network. The AI chat (/api/*) always needs the
  * network and is intentionally never cached. */
 
-const VERSION = 'v2'
+const VERSION = 'v3'
 const CACHE = `fin-planner-${VERSION}`
 
 // Minimal shell to pre-cache so the app opens offline on a cold start. The PDF

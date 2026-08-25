@@ -8,7 +8,7 @@ import {
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: `${SITE_NAME} — SIP Goal Calculator`,
+    name: `${SITE_NAME} — Goal Calculator`,
     short_name: SITE_NAME,
     description: SITE_DESCRIPTION,
     id: '/',
@@ -19,7 +19,7 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: BACKGROUND_COLOR,
     theme_color: THEME_COLOR,
     categories: ['finance', 'productivity', 'utilities'],
-    lang: 'en-IN',
+    lang: 'en',
     dir: 'ltr',
     icons: [
       {

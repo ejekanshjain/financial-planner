@@ -11,7 +11,7 @@ export const SITE_URL = (
 export const SITE_NAME = 'Financial Planner'
 
 export const SITE_DESCRIPTION =
-  'Plan your SIP investments goal by goal. Calculate the monthly SIP needed to reach any financial goal — house, car, retirement — with step-up, inflation and lump-sum support. Free, private, and works offline.'
+  'Plan investments goal by goal in INR, USD, GBP, EUR and any other currency your browser knows. Calculate the monthly amount needed to reach a house, retirement or education target — with step-up, inflation and lump-sum support. Free, private, and works offline.'
 
 /** Brand colours shared between the manifest and theme-color meta. */
 export const THEME_COLOR = '#10301d'

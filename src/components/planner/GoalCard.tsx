@@ -1,8 +1,9 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { usePlannerLocale } from '~/components/locale/LocaleProvider'
 import { displayFont } from '~/lib/fonts'
-import { calcGoal, calcSwp, formatYearsMonths, Goal, inrWords } from '~/lib/goals'
+import { calcGoal, calcSwp, formatYearsMonths, Goal } from '~/lib/goals'
 
 export function GoalCard({
   goal,
@@ -13,6 +14,7 @@ export function GoalCard({
   onClick: () => void
   onDelete: () => void
 }) {
+  const { formatCompact, profile } = usePlannerLocale()
   const isSwp = goal.mode === 'swp'
   const calc = useMemo(() => calcGoal(goal), [goal])
   const swp = useMemo(() => calcSwp(goal), [goal])
@@ -54,7 +56,11 @@ export function GoalCard({
                 {goal.years} yr {isSwp ? 'plan' : 'goal'}
               </span>
               <span className="inline-block rounded-full bg-[#b5893a]/15 px-2 py-0.5 text-[11px] font-medium text-[#8a6722]">
-                {isSwp ? 'withdrawal' : goal.mode === 'sip' ? 'by SIP' : 'by target'}
+                {isSwp
+                  ? 'withdrawal'
+                  : goal.mode === 'sip'
+                    ? profile.copy.byContribution
+                    : 'by target'}
               </span>
             </div>
           </div>
@@ -69,7 +75,7 @@ export function GoalCard({
               e.stopPropagation()
               setConfirmDelete(true)
             }}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-[#10301d]/30 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 focus:opacity-100 group-hover:opacity-100"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-[#10301d]/30 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 focus:opacity-100"
           >
             <svg
               className="h-4 w-4"
@@ -109,17 +115,17 @@ export function GoalCard({
           <p
             className={`mt-0.5 text-[22px] leading-none text-[#10301d] ${displayFont.className}`}
           >
-            {inrWords(isSwp ? swp.corpus : calc.nominalTarget)}
+            {formatCompact(isSwp ? swp.corpus : calc.nominalTarget)}
           </p>
         </div>
         <div>
           <p className="text-[11px] font-semibold tracking-widest text-[#10301d]/45 uppercase">
-            {isSwp ? 'Withdrawal' : 'Monthly SIP'}
+            {isSwp ? 'Withdrawal' : profile.copy.monthlyContribution}
           </p>
           <p
             className={`mt-0.5 text-[22px] leading-none text-[#1d4d31] ${displayFont.className}`}
           >
-            {inrWords(isSwp ? swp.monthlyWithdrawal : calc.monthlySip)}
+            {formatCompact(isSwp ? swp.monthlyWithdrawal : calc.monthlySip)}
             {isSwp && (
               <span className="text-[13px] text-[#1d4d31]/55"> /mo</span>
             )}
@@ -142,23 +148,23 @@ export function GoalCard({
                 ? '100+ yrs'
                 : formatYearsMonths(swp.lastsMonths)}
             </span>
-            <span>{inrWords(swp.totalWithdrawn)} drawn</span>
+            <span>{formatCompact(swp.totalWithdrawn)} drawn</span>
           </div>
         </div>
       ) : (
-      <div className="mt-4 space-y-1.5">
-        <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-[#10301d]/8">
-          <div
-            className="h-full rounded-l-full bg-[#1d4d31]"
-            style={{ width: `${investedPct}%` }}
-          />
-          <div className="h-full flex-1 bg-[#b5893a]" />
+        <div className="mt-4 space-y-1.5">
+          <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-[#10301d]/8">
+            <div
+              className="h-full rounded-l-full bg-[#1d4d31]"
+              style={{ width: `${investedPct}%` }}
+            />
+            <div className="h-full flex-1 bg-[#b5893a]" />
+          </div>
+          <div className="flex justify-between text-[10px] text-[#10301d]/40">
+            <span>You invest {formatCompact(calc.invested)}</span>
+            <span>Market returns {formatCompact(calc.gain)}</span>
+          </div>
         </div>
-        <div className="flex justify-between text-[10px] text-[#10301d]/40">
-          <span>You invest {inrWords(calc.invested)}</span>
-          <span>Market returns {inrWords(calc.gain)}</span>
-        </div>
-      </div>
       )}
 
       {/* delete confirmation overlay */}

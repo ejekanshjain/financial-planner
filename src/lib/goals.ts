@@ -1,7 +1,11 @@
+import type { GoalDefaults, PlannerLocale } from './locale'
+import { isPlannerLocale } from './locale'
+
 export const CRORE = 1e7
-export const MAX_TARGET = 100 * CRORE
-/** Upper clamp for a user-entered monthly SIP in the contribution-driven mode. */
-export const MAX_SIP = 50 * 1e5
+/** Absolute storage clamp — UI sliders use the tighter per-locale bounds. */
+export const MAX_TARGET = 1e13
+/** Upper clamp for a user-entered monthly contribution. */
+export const MAX_SIP = 1e10
 
 /**
  * How a goal is planned:
@@ -74,52 +78,17 @@ export const GOAL_ICONS = [
   { emoji: '🎯', label: 'Other' }
 ]
 
-export const GOAL_DEFAULTS = {
-  mode: 'target' as GoalMode,
-  target: 1 * CRORE,
-  monthlySip: 25000,
+/** Neutral fill-ins when an imported goal is missing fields. */
+const GOAL_FALLBACK: GoalDefaults = {
+  mode: 'target',
+  target: 0,
+  monthlySip: 0,
   years: 10,
-  annualReturn: 12,
-  stepUp: 10,
-  inflation: 6,
+  annualReturn: 8,
+  stepUp: 0,
+  inflation: 3,
   lumpSum: 0,
   inflateTarget: false
-}
-
-export const TARGET_PRESETS = [
-  { label: '50L', value: 50 * 1e5 },
-  { label: '1 Cr', value: 1 * CRORE },
-  { label: '2 Cr', value: 2 * CRORE },
-  { label: '5 Cr', value: 5 * CRORE },
-  { label: '10 Cr', value: 10 * CRORE },
-  { label: '25 Cr', value: 25 * CRORE },
-  { label: '50 Cr', value: 50 * CRORE }
-]
-
-/** Upper bound of the monthly-SIP slider; the number field may still exceed it up to MAX_SIP. */
-export const SIP_SLIDER_MAX = 2 * 1e5
-
-export const SIP_PRESETS = [
-  { label: '₹5K', value: 5_000 },
-  { label: '₹10K', value: 10_000 },
-  { label: '₹25K', value: 25_000 },
-  { label: '₹50K', value: 50_000 },
-  { label: '₹1L', value: 1_00_000 },
-  { label: '₹2L', value: 2_00_000 }
-]
-
-/**
- * Sensible starting points for a new SWP (withdrawal) goal. The corpus reuses
- * the `target` field and the withdrawal reuses `monthlySip`; returns default
- * lower than equity SIPs since a drawdown corpus is usually more conservative.
- */
-export const SWP_DEFAULTS = {
-  corpus: 2 * CRORE,
-  withdrawal: 50_000,
-  annualReturn: 8,
-  stepUp: 6,
-  inflation: 6,
-  years: 25
 }
 
 export const CHART_PALETTE = [
@@ -136,14 +105,15 @@ export const CHART_PALETTE = [
 export function makeGoal(
   name: string,
   icon: string,
-  overrides: Partial<typeof GOAL_DEFAULTS> = {}
+  overrides: Partial<Goal> = {},
+  base: GoalDefaults = GOAL_FALLBACK
 ): Goal {
   return {
     id: crypto.randomUUID(),
     name,
     icon,
     createdAt: Date.now(),
-    ...GOAL_DEFAULTS,
+    ...base,
     ...overrides
   }
 }
@@ -337,47 +307,32 @@ export function calcSwp(goal: Goal): SwpCalc {
   }
 }
 
-/* ── log-scale slider (0-1000 ↔ 0 to MAX_TARGET) ─────────── */
-const LOG_MIN = 1e5
-const LOG_MAX = MAX_TARGET
-
-export function logSliderToValue(pos: number): number {
+/* ── log-scale slider (0-1000 ↔ 0 to locale max) ─────────── */
+export function logSliderToValue(
+  pos: number,
+  logMin: number,
+  logMax: number
+): number {
   if (pos <= 0) return 0
-  const lo = Math.log10(LOG_MIN)
-  const hi = Math.log10(LOG_MAX)
+  const lo = Math.log10(logMin)
+  const hi = Math.log10(logMax)
   const raw = Math.pow(10, lo + ((hi - lo) * (pos - 1)) / 999)
   const mag = Math.pow(10, Math.floor(Math.log10(raw)) - 1)
   return Math.round(raw / mag) * mag
 }
 
-export function valueToLogSlider(value: number): number {
+export function valueToLogSlider(
+  value: number,
+  logMin: number,
+  logMax: number
+): number {
   if (value <= 0) return 0
-  const lo = Math.log10(LOG_MIN)
-  const hi = Math.log10(LOG_MAX)
+  const lo = Math.log10(logMin)
+  const hi = Math.log10(logMax)
   return (
     1 +
-    Math.round(((Math.log10(Math.max(LOG_MIN, value)) - lo) / (hi - lo)) * 999)
+    Math.round(((Math.log10(Math.max(logMin, value)) - lo) / (hi - lo)) * 999)
   )
-}
-
-/* ── formatters ───────────────────────────────────────────── */
-export function inr(n: number) {
-  return (
-    '₹' +
-    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(
-      Math.round(Number.isFinite(n) ? n : 0)
-    )
-  )
-}
-
-export function inrWords(n: number) {
-  if (!Number.isFinite(n)) return '₹0'
-  // Two decimals, then drop any trailing zeros (and a now-bare dot): 1.50 → 1.5, 1.00 → 1.
-  const trim = (v: number) => v.toFixed(2).replace(/\.?0+$/, '')
-  if (n >= CRORE) return `₹${trim(n / CRORE)} Cr`
-  if (n >= 1e5) return `₹${trim(n / 1e5)} L`
-  if (n >= 1e3) return `₹${trim(n / 1e3)} K`
-  return inr(n)
 }
 
 /** Humanise a whole number of months, e.g. 30 → "2 yr 6 mo", 24 → "2 years". */
@@ -445,27 +400,33 @@ function normalizeGoal(raw: unknown): Goal {
     icon: typeof g.icon === 'string' && g.icon ? g.icon : '🎯',
     // Older exports predate `mode`; default them to the target-driven plan.
     mode: g.mode === 'sip' || g.mode === 'swp' ? g.mode : 'target',
-    target: clamp(num(g.target, GOAL_DEFAULTS.target), 0, MAX_TARGET),
-    monthlySip: clamp(num(g.monthlySip, GOAL_DEFAULTS.monthlySip), 0, MAX_SIP),
-    years: clamp(Math.round(num(g.years, GOAL_DEFAULTS.years)), 1, 50),
-    annualReturn: clamp(num(g.annualReturn, GOAL_DEFAULTS.annualReturn), 1, 30),
-    stepUp: clamp(num(g.stepUp, GOAL_DEFAULTS.stepUp), 0, 50),
-    inflation: clamp(num(g.inflation, GOAL_DEFAULTS.inflation), 0, 15),
+    target: clamp(num(g.target, GOAL_FALLBACK.target), 0, MAX_TARGET),
+    monthlySip: clamp(num(g.monthlySip, GOAL_FALLBACK.monthlySip), 0, MAX_SIP),
+    years: clamp(Math.round(num(g.years, GOAL_FALLBACK.years)), 1, 50),
+    annualReturn: clamp(num(g.annualReturn, GOAL_FALLBACK.annualReturn), 1, 30),
+    stepUp: clamp(num(g.stepUp, GOAL_FALLBACK.stepUp), 0, 50),
+    inflation: clamp(num(g.inflation, GOAL_FALLBACK.inflation), 0, 15),
     lumpSum: clamp(num(g.lumpSum, 0), 0, MAX_TARGET),
     inflateTarget: Boolean(g.inflateTarget),
     createdAt: num(g.createdAt, Date.now())
   }
 }
 
-const EXPORT_VERSION = 1
+const EXPORT_VERSION = 2
+
+export type PlannerExport = {
+  goals: Goal[]
+  locale?: PlannerLocale
+}
 
 /** Trigger a download of all goals as a JSON file. */
-export function downloadGoals(goals: Goal[]): void {
+export function downloadGoals(goals: Goal[], locale?: PlannerLocale): void {
   if (typeof window === 'undefined') return
   const payload = {
     app: 'financial-planner',
     version: EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
+    locale: locale ?? undefined,
     goals
   }
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
@@ -480,11 +441,10 @@ export function downloadGoals(goals: Goal[]): void {
 }
 
 /**
- * Parse the contents of an exported file into a list of valid goals.
- * Accepts either a bare array of goals or the wrapped `{ goals: [...] }` shape.
- * Throws a user-friendly Error when the file cannot be understood.
+ * Parse an exported file into goals and, when present, the locale they were
+ * planned in. Accepts a bare array of goals or `{ goals, locale }`.
  */
-export function parseGoalsFile(raw: string): Goal[] {
+export function parsePlannerExport(raw: string): PlannerExport {
   let data: unknown
   try {
     data = JSON.parse(raw)
@@ -498,7 +458,18 @@ export function parseGoalsFile(raw: string): Goal[] {
   if (list.length === 0) {
     throw new Error('This file contains no goals.')
   }
-  return list.map(normalizeGoal)
+  const locale = !Array.isArray(data)
+    ? (data as { locale?: unknown }).locale
+    : undefined
+  return {
+    goals: list.map(normalizeGoal),
+    locale: isPlannerLocale(locale) ? locale : undefined
+  }
+}
+
+/** Parse the contents of an exported file into a list of valid goals. */
+export function parseGoalsFile(raw: string): Goal[] {
+  return parsePlannerExport(raw).goals
 }
 
 /* ── share via link ───────────────────────────────────────── */
@@ -525,8 +496,13 @@ function base64UrlToUtf8(b64: string): string {
  * encoded query param. Reuses the current `window.location.href` so the link
  * always points back at wherever the app is hosted.
  */
-export function buildShareUrl(goals: Goal[]): string {
-  const payload = { app: 'financial-planner', version: EXPORT_VERSION, goals }
+export function buildShareUrl(goals: Goal[], locale?: PlannerLocale): string {
+  const payload = {
+    app: 'financial-planner',
+    version: EXPORT_VERSION,
+    locale: locale ?? undefined,
+    goals
+  }
   const url = new URL(window.location.href)
   url.searchParams.set(SHARE_PARAM, utf8ToBase64Url(JSON.stringify(payload)))
   return url.toString()
@@ -537,7 +513,7 @@ export function buildShareUrl(goals: Goal[]): string {
  * param from the address bar (so a refresh or re-share doesn't re-import).
  * Returns null when there's nothing to import or the payload is unreadable.
  */
-export function consumeSharedGoals(): Goal[] | null {
+export function consumeSharedGoals(): PlannerExport | null {
   if (typeof window === 'undefined') return null
   const url = new URL(window.location.href)
   const encoded = url.searchParams.get(SHARE_PARAM)
@@ -549,7 +525,7 @@ export function consumeSharedGoals(): Goal[] | null {
   window.history.replaceState({}, '', url.toString())
 
   try {
-    return parseGoalsFile(base64UrlToUtf8(encoded))
+    return parsePlannerExport(base64UrlToUtf8(encoded))
   } catch {
     return null
   }

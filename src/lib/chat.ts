@@ -1,5 +1,6 @@
 import type { UIMessage } from 'ai'
-import { calcGoal, calcSwp, formatYearsMonths, Goal, inr, inrWords } from './goals'
+import { calcGoal, calcSwp, formatYearsMonths, Goal } from './goals'
+import { formatCompact, formatMoney, PlannerLocale, profileFor } from './locale'
 
 /* ── localStorage persistence ─────────────────────────────── */
 const CHAT_STORAGE_KEY = 'financial-planner-chat'
@@ -48,9 +49,28 @@ export function clearChatStorage(): void {
  * rather than the raw inputs so the assistant can reference concrete figures
  * without having to redo the maths.
  */
-export function buildFinancialContext(goals: Goal[]): string {
+export function buildFinancialContext(
+  goals: Goal[],
+  loc: PlannerLocale
+): string {
+  const money = (n: number) => formatMoney(n, loc)
+  const compact = (n: number) => formatCompact(n, loc)
+  const copy = profileFor(loc).copy
+  const contribution = copy.contribution
+
+  const header = [
+    `The user plans from region ${loc.region} in ${loc.currency}.`,
+    `Format amounts with ${loc.currency} and ${
+      loc.currency === 'INR' || loc.region === 'IN'
+        ? 'Indian lakhs/crores'
+        : 'thousands/millions/billions'
+    }.`,
+    `Call a recurring monthly investment a "${contribution}".`,
+    copy.advisorNote
+  ].join('\n')
+
   if (goals.length === 0) {
-    return 'The user has not created any financial goals yet.'
+    return `${header}\n\nThe user has not created any financial goals yet.`
   }
 
   const lines: string[] = []
@@ -60,25 +80,24 @@ export function buildFinancialContext(goals: Goal[]): string {
 
   goals.forEach((goal, i) => {
     if (goal.mode === 'swp') {
-      // Decumulation goal — summarise via the withdrawal model instead.
       const w = calcSwp(goal)
       totalIncome += w.monthlyWithdrawal
       lines.push(
         [
           `${i + 1}. ${goal.icon} ${goal.name}`,
-          `   - Planning mode: SWP / withdrawal (user draws a monthly income from a corpus)`,
-          `   - Starting corpus: ${inrWords(w.corpus)} (${inr(w.corpus)})`,
-          `   - Monthly withdrawal (now): ${inr(w.monthlyWithdrawal)}, rising ${goal.stepUp}%/yr`,
+          `   - Planning mode: withdrawal (user draws a monthly income from a corpus)`,
+          `   - Starting corpus: ${compact(w.corpus)} (${money(w.corpus)})`,
+          `   - Monthly withdrawal (now): ${money(w.monthlyWithdrawal)}, rising ${goal.stepUp}%/yr`,
           `   - Return on the corpus while drawing down: ${goal.annualReturn}%`,
           `   - How long it lasts: ${
             w.sustainable
               ? 'over 100 years — effectively sustainable at this rate'
               : formatYearsMonths(w.lastsMonths)
           }`,
-          `   - Planning horizon: ${goal.years} years; balance left at the horizon: ${inrWords(w.balanceAtHorizon)}`,
-          `   - Final-year withdrawal: ${inr(w.lastYearWithdrawal)}/mo (${inrWords(w.realLastWithdrawal)}/mo in today’s money at ${goal.inflation}% inflation)`,
-          `   - Total withdrawn over the horizon: ${inrWords(w.totalWithdrawn)}`,
-          `   - A ${inrWords(w.sustainableWithdrawal)}/mo withdrawal would last exactly ${goal.years} years`
+          `   - Planning horizon: ${goal.years} years; balance left at the horizon: ${compact(w.balanceAtHorizon)}`,
+          `   - Final-year withdrawal: ${money(w.lastYearWithdrawal)}/mo (${compact(w.realLastWithdrawal)}/mo in today’s money at ${goal.inflation}% inflation)`,
+          `   - Total withdrawn over the horizon: ${compact(w.totalWithdrawn)}`,
+          `   - A ${compact(w.sustainableWithdrawal)}/mo withdrawal would last exactly ${goal.years} years`
         ].join('\n')
       )
       return
@@ -93,41 +112,43 @@ export function buildFinancialContext(goals: Goal[]): string {
         `${i + 1}. ${goal.icon} ${goal.name}`,
         `   - Planning mode: ${
           sipMode
-            ? 'SIP-driven (user fixes the monthly SIP; the corpus is projected)'
-            : 'target-driven (user fixes the target; the SIP is solved for)'
+            ? `${contribution}-driven (user fixes the monthly ${contribution}; the corpus is projected)`
+            : `target-driven (user fixes the target; the ${contribution} is solved for)`
         }`,
         `   - Time horizon: ${goal.years} years`,
-        `   - ${sipMode ? 'Projected corpus' : 'Target wealth'}: ${inrWords(c.nominalTarget)} (${inr(c.nominalTarget)})${
+        `   - ${sipMode ? 'Projected corpus' : 'Target wealth'}: ${compact(c.nominalTarget)} (${money(c.nominalTarget)})${
           !sipMode && goal.inflateTarget
             ? ' — entered in today’s money, inflated to the horizon'
             : ''
         }`,
-        `   - ${sipMode ? 'Chosen' : 'Required'} monthly SIP (now): ${inr(c.monthlySip)}`,
-        `   - Final-year monthly SIP: ${inr(c.lastYearMonthly)}`,
+        `   - ${sipMode ? 'Chosen' : 'Required'} monthly ${contribution} (now): ${money(c.monthlySip)}`,
+        `   - Final-year monthly ${contribution}: ${money(c.lastYearMonthly)}`,
         `   - Expected annual return: ${goal.annualReturn}%`,
-        `   - Annual SIP step-up: ${goal.stepUp}%`,
+        `   - Annual ${contribution} step-up: ${goal.stepUp}%`,
         `   - Assumed inflation: ${goal.inflation}%`,
         goal.lumpSum > 0
-          ? `   - One-time lump sum invested today: ${inr(goal.lumpSum)} (grows to ${inrWords(c.lumpFutureValue)})`
+          ? `   - One-time lump sum invested today: ${money(goal.lumpSum)} (grows to ${compact(c.lumpFutureValue)})`
           : '   - No upfront lump sum',
-        `   - Total invested over the plan: ${inrWords(c.invested)}; projected gain: ${inrWords(c.gain)}`
+        `   - Total invested over the plan: ${compact(c.invested)}; projected gain: ${compact(c.gain)}`
       ].join('\n')
     )
   })
 
   const totals = [
     totalSip > 0
-      ? `Combined required monthly SIP across accumulation goals: ${inr(totalSip)}.`
+      ? `Combined required monthly ${contribution} across accumulation goals: ${money(totalSip)}.`
       : null,
     totalTarget > 0
-      ? `Combined target/projected wealth: ${inrWords(totalTarget)}.`
+      ? `Combined target/projected wealth: ${compact(totalTarget)}.`
       : null,
     totalIncome > 0
-      ? `Combined monthly income from withdrawal (SWP) goals: ${inr(totalIncome)}.`
+      ? `Combined monthly income from withdrawal goals: ${money(totalIncome)}.`
       : null
   ].filter(Boolean)
 
   return [
+    header,
+    '',
     `The user currently has ${goals.length} financial goal(s):`,
     '',
     lines.join('\n\n'),

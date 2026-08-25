@@ -12,7 +12,7 @@ import './globals.css'
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: `${SITE_NAME} — SIP Goal Calculator for Indian Investors`,
+    default: `${SITE_NAME} — Goal Calculator for INR, USD, GBP & EUR`,
     template: `%s · ${SITE_NAME}`
   },
   description: SITE_DESCRIPTION,
@@ -20,14 +20,13 @@ export const metadata: Metadata = {
   keywords: [
     'SIP calculator',
     'financial planner',
-    'mutual fund SIP',
     'goal based investing',
-    'step up SIP',
     'retirement planning',
     'investment calculator',
-    'India',
-    'lakhs',
-    'crores'
+    'INR',
+    'USD',
+    'GBP',
+    'EUR'
   ],
   authors: [{ name: SITE_NAME }],
   creator: SITE_NAME,
@@ -49,10 +48,10 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     siteName: SITE_NAME,
-    title: `${SITE_NAME} — SIP Goal Calculator`,
+    title: `${SITE_NAME} — Goal Calculator`,
     description: SITE_DESCRIPTION,
     url: SITE_URL,
-    locale: 'en_IN',
+    locale: 'en',
     images: [
       {
         url: '/icon-512.png',
@@ -64,7 +63,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary',
-    title: `${SITE_NAME} — SIP Goal Calculator`,
+    title: `${SITE_NAME} — Goal Calculator`,
     description: SITE_DESCRIPTION,
     images: ['/icon-512.png']
   },

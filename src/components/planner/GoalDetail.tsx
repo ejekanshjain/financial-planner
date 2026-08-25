@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { usePlannerLocale } from '~/components/locale/LocaleProvider'
 import { displayFont } from '~/lib/fonts'
 import {
   calcGoal,
@@ -9,15 +10,8 @@ import {
   Goal,
   GOAL_ICONS,
   GoalMode,
-  inr,
-  inrWords,
   logSliderToValue,
-  MAX_SIP,
-  MAX_TARGET,
-  SIP_PRESETS,
-  SIP_SLIDER_MAX,
   SwpCalc,
-  TARGET_PRESETS,
   valueToLogSlider
 } from '~/lib/goals'
 
@@ -151,9 +145,10 @@ function MoneyField({
 }) {
   const [draft, setDraft] = useState<string | null>(null)
 
+  const { symbol, profile } = usePlannerLocale()
   const commit = () => {
     const parsed = Number((draft ?? String(value)).replace(/,/g, ''))
-    onChange(clamp(Number.isFinite(parsed) ? parsed : 0, 0, MAX_TARGET))
+    onChange(clamp(Number.isFinite(parsed) ? parsed : 0, 0, profile.maxTarget))
     setDraft(null)
   }
 
@@ -167,14 +162,14 @@ function MoneyField({
         onChange={e => {
           setDraft(e.target.value)
           const v = Number(e.target.value.replace(/,/g, ''))
-          if (Number.isFinite(v)) onChange(clamp(v, 0, MAX_TARGET))
+          if (Number.isFinite(v)) onChange(clamp(v, 0, profile.maxTarget))
         }}
         onBlur={commit}
         onKeyDown={e => e.key === 'Enter' && commit()}
         className={`${width} [appearance:textfield] bg-transparent px-3 py-1.5 text-right text-[15px] font-semibold text-[#10301d] tabular-nums outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${displayFont.className}`}
       />
       <span className="flex items-center bg-[#10301d]/5 px-2.5 text-[13px] font-medium text-[#10301d]/55">
-        ₹
+        {symbol}
       </span>
     </div>
   )
@@ -196,9 +191,8 @@ function TargetField({
   years: number
   inflation: number
 }) {
-  const nominal = inflateTarget
-    ? value * (1 + inflation / 100) ** years
-    : value
+  const { formatCompact, profile } = usePlannerLocale()
+  const nominal = inflateTarget ? value * (1 + inflation / 100) ** years : value
 
   return (
     <div className="space-y-2.5">
@@ -221,7 +215,7 @@ function TargetField({
           </p>
           <p className="text-[11px] text-[#10301d]/45">
             {inflateTarget
-              ? `Need ${inrWords(nominal)} in ${years} yrs to match today’s ${inrWords(value)}`
+              ? `Need ${formatCompact(nominal)} in ${years} yrs to match today’s ${formatCompact(value)}`
               : 'Enter the amount in today’s money instead'}
           </p>
         </div>
@@ -229,7 +223,7 @@ function TargetField({
       </div>
 
       <div className="flex flex-wrap gap-1.5">
-        {TARGET_PRESETS.map(p => (
+        {profile.targetPresets.map(p => (
           <button
             key={p.label}
             type="button"
@@ -248,15 +242,23 @@ function TargetField({
       <input
         type="range"
         aria-label="Target wealth slider"
-        value={valueToLogSlider(value)}
+        value={valueToLogSlider(value, profile.logMin, profile.maxTarget)}
         min={0}
         max={1000}
         step={1}
-        onChange={e => onChange(logSliderToValue(Number(e.target.value)))}
+        onChange={e =>
+          onChange(
+            logSliderToValue(
+              Number(e.target.value),
+              profile.logMin,
+              profile.maxTarget
+            )
+          )
+        }
         className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#10301d]/12 accent-[#1d4d31] outline-none"
       />
       <p className="text-xs text-[#10301d]/45">
-        {inrWords(value)} · slider up to ₹100 Cr
+        {formatCompact(value)} · slider up to {formatCompact(profile.maxTarget)}
       </p>
     </div>
   )
@@ -270,9 +272,14 @@ function ModeToggle({
   mode: GoalMode
   onChange: (m: GoalMode) => void
 }) {
+  const { profile } = usePlannerLocale()
   const options: { value: GoalMode; label: string; hint: string }[] = [
     { value: 'target', label: 'By target', hint: 'Reach an amount' },
-    { value: 'sip', label: 'By SIP', hint: 'Grow a monthly invest' },
+    {
+      value: 'sip',
+      label: profile.copy.planByContribution,
+      hint: profile.copy.contributionHint
+    },
     { value: 'swp', label: 'Withdraw', hint: 'Income from a corpus' }
   ]
   return (
@@ -317,7 +324,7 @@ function ModeToggle({
 function SipField({
   value,
   onChange,
-  label = 'Monthly SIP',
+  label,
   helper
 }: {
   value: number
@@ -325,11 +332,13 @@ function SipField({
   label?: string
   helper?: React.ReactNode
 }) {
+  const { symbol, profile, formatCompact } = usePlannerLocale()
+  const fieldLabel = label ?? profile.copy.monthlyContribution
   const [draft, setDraft] = useState<string | null>(null)
 
   const commit = () => {
     const parsed = Number((draft ?? String(value)).replace(/,/g, ''))
-    onChange(clamp(Number.isFinite(parsed) ? parsed : 0, 0, MAX_SIP))
+    onChange(clamp(Number.isFinite(parsed) ? parsed : 0, 0, profile.maxMonthly))
     setDraft(null)
   }
 
@@ -337,24 +346,24 @@ function SipField({
     <div className="space-y-2.5">
       <div className="flex items-baseline justify-between gap-3">
         <label className="text-[13px] font-medium tracking-wide text-[#10301d]/80 uppercase">
-          {label}
+          {fieldLabel}
         </label>
         <div className="flex items-stretch overflow-hidden rounded-md border border-[#10301d]/15 bg-[#fffdf7] focus-within:border-[#b5893a] focus-within:ring-2 focus-within:ring-[#b5893a]/25">
           <span className="flex items-center bg-[#10301d]/5 px-2.5 text-[13px] font-medium text-[#10301d]/55">
-            ₹
+            {symbol}
           </span>
           <input
             type="number"
             inputMode="decimal"
-            aria-label={`${label} amount`}
+            aria-label={`${fieldLabel} amount`}
             value={draft ?? value}
             min={0}
-            max={MAX_SIP}
-            step={500}
+            max={profile.maxMonthly}
+            step={profile.monthlySliderStep}
             onChange={e => {
               setDraft(e.target.value)
               const v = Number(e.target.value.replace(/,/g, ''))
-              if (Number.isFinite(v)) onChange(clamp(v, 0, MAX_SIP))
+              if (Number.isFinite(v)) onChange(clamp(v, 0, profile.maxMonthly))
             }}
             onBlur={commit}
             onKeyDown={e => e.key === 'Enter' && commit()}
@@ -367,7 +376,7 @@ function SipField({
       </div>
 
       <div className="flex flex-wrap gap-1.5">
-        {SIP_PRESETS.map(p => (
+        {profile.monthlyPresets.map(p => (
           <button
             key={p.label}
             type="button"
@@ -385,16 +394,17 @@ function SipField({
 
       <input
         type="range"
-        aria-label={`${label} slider`}
-        value={Math.min(value, SIP_SLIDER_MAX)}
+        aria-label={`${fieldLabel} slider`}
+        value={Math.min(value, profile.monthlySliderMax)}
         min={0}
-        max={SIP_SLIDER_MAX}
-        step={500}
+        max={profile.monthlySliderMax}
+        step={profile.monthlySliderStep}
         onChange={e => onChange(Number(e.target.value))}
         className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#10301d]/12 accent-[#1d4d31] outline-none"
       />
       <p className="text-xs text-[#10301d]/45">
-        {helper ?? `${inrWords(value)} a month to start, before any step-up`}
+        {helper ??
+          `${formatCompact(value)} a month to start, before any step-up`}
       </p>
     </div>
   )
@@ -408,16 +418,21 @@ function CorpusField({
   value: number
   onChange: (n: number) => void
 }) {
+  const { formatCompact, profile } = usePlannerLocale()
   return (
     <div className="space-y-2.5">
       <div className="flex items-baseline justify-between gap-3">
         <label className="text-[13px] font-medium tracking-wide text-[#10301d]/80 uppercase">
           Retirement corpus
         </label>
-        <MoneyField value={value} onChange={onChange} label="Retirement corpus" />
+        <MoneyField
+          value={value}
+          onChange={onChange}
+          label="Retirement corpus"
+        />
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {TARGET_PRESETS.map(p => (
+        {profile.targetPresets.map(p => (
           <button
             key={p.label}
             type="button"
@@ -435,15 +450,24 @@ function CorpusField({
       <input
         type="range"
         aria-label="Retirement corpus slider"
-        value={valueToLogSlider(value)}
+        value={valueToLogSlider(value, profile.logMin, profile.maxTarget)}
         min={0}
         max={1000}
         step={1}
-        onChange={e => onChange(logSliderToValue(Number(e.target.value)))}
+        onChange={e =>
+          onChange(
+            logSliderToValue(
+              Number(e.target.value),
+              profile.logMin,
+              profile.maxTarget
+            )
+          )
+        }
         className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#10301d]/12 accent-[#1d4d31] outline-none"
       />
       <p className="text-xs text-[#10301d]/45">
-        {inrWords(value)} saved up — the pot you&rsquo;ll draw an income from
+        {formatCompact(value)} saved up — the pot you&rsquo;ll draw an income
+        from
       </p>
     </div>
   )
@@ -457,27 +481,40 @@ function LumpSumField({
   value: number
   onChange: (n: number) => void
 }) {
+  const { formatCompact, profile } = usePlannerLocale()
   return (
     <div className="space-y-2.5">
       <div className="flex items-baseline justify-between gap-3">
         <label className="text-[13px] font-medium tracking-wide text-[#10301d]/80 uppercase">
           Existing lump sum
         </label>
-        <MoneyField value={value} onChange={onChange} label="Existing lump sum" />
+        <MoneyField
+          value={value}
+          onChange={onChange}
+          label="Existing lump sum"
+        />
       </div>
       <input
         type="range"
         aria-label="Existing lump sum slider"
-        value={valueToLogSlider(value)}
+        value={valueToLogSlider(value, profile.logMin, profile.maxTarget)}
         min={0}
         max={1000}
         step={1}
-        onChange={e => onChange(logSliderToValue(Number(e.target.value)))}
+        onChange={e =>
+          onChange(
+            logSliderToValue(
+              Number(e.target.value),
+              profile.logMin,
+              profile.maxTarget
+            )
+          )
+        }
         className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#10301d]/12 accent-[#1d4d31] outline-none"
       />
       <p className="text-xs text-[#10301d]/45">
         {value > 0
-          ? `${inrWords(value)} invested today, growing with this goal`
+          ? `${formatCompact(value)} invested today, growing with this goal`
           : 'A one-time amount you’ve already invested (optional)'}
       </p>
     </div>
@@ -516,6 +553,7 @@ function SwpResults({
   years: number
   inflation: number
 }) {
+  const { formatMoney, formatCompact } = usePlannerLocale()
   const swpMax = Math.max(corpus, ...swp.series.map(p => p.balance), 1)
   const endYear = swp.series.at(-1)?.year ?? years
   const keepsPace = stepUp >= inflation
@@ -544,13 +582,13 @@ function SwpResults({
         <p className="mt-2 text-sm text-[#f4efe2]/70">
           Drawing{' '}
           <span className="font-semibold text-[#d8b877]">
-            {inrWords(withdrawal)}
+            {formatCompact(withdrawal)}
           </span>
           /mo, rising{' '}
-          <span className="font-semibold text-[#d8b877]">+{stepUp}%</span> a year,
-          from a{' '}
+          <span className="font-semibold text-[#d8b877]">+{stepUp}%</span> a
+          year, from a{' '}
           <span className="font-semibold text-[#d8b877]">
-            {inrWords(corpus)}
+            {formatCompact(corpus)}
           </span>{' '}
           corpus growing at{' '}
           <span className="font-semibold text-[#d8b877]">{annualReturn}%</span>.
@@ -561,18 +599,25 @@ function SwpResults({
               : ''}
         </p>
         <div className="mt-7 grid grid-cols-3 gap-4 border-t border-[#f4efe2]/12 pt-6">
-          <Stat label="Total withdrawn" value={inrWords(swp.totalWithdrawn)} />
           <Stat
-            label={swp.depletesBeforeHorizon ? 'Runs out in' : `Left after ${years} yr`}
+            label="Total withdrawn"
+            value={formatCompact(swp.totalWithdrawn)}
+          />
+          <Stat
+            label={
+              swp.depletesBeforeHorizon
+                ? 'Runs out in'
+                : `Left after ${years} yr`
+            }
             value={
               swp.depletesBeforeHorizon
                 ? formatYearsMonths(swp.lastsMonths)
-                : inrWords(swp.balanceAtHorizon)
+                : formatCompact(swp.balanceAtHorizon)
             }
           />
           <Stat
             label={`Income in yr ${years}`}
-            value={inrWords(swp.lastYearWithdrawal)}
+            value={formatCompact(swp.lastYearWithdrawal)}
           />
         </div>
       </div>
@@ -590,17 +635,17 @@ function SwpResults({
         <p
           className={`mt-2 text-4xl text-[#10301d] sm:text-5xl ${displayFont.className}`}
         >
-          {inr(swp.realLastWithdrawal)}
+          {formatMoney(swp.realLastWithdrawal)}
           <span className="text-xl text-[#10301d]/45"> /mo</span>
         </p>
         <p className="mt-2 text-sm leading-relaxed text-[#10301d]/60">
-          Your {inrWords(withdrawal)}/mo today rises to{' '}
+          Your {formatCompact(withdrawal)}/mo today rises to{' '}
           <span className="font-semibold text-[#10301d]">
-            {inrWords(swp.lastYearWithdrawal)}/mo
+            {formatCompact(swp.lastYearWithdrawal)}/mo
           </span>{' '}
           by year {years} — worth{' '}
           <span className="font-semibold text-[#10301d]">
-            {inrWords(swp.realLastWithdrawal)}/mo
+            {formatCompact(swp.realLastWithdrawal)}/mo
           </span>{' '}
           in today&rsquo;s money.{' '}
           {keepsPace
@@ -627,7 +672,7 @@ function SwpResults({
                 key={d.year}
                 className="group relative flex flex-1 flex-col justify-end"
                 style={{ height: '100%' }}
-                title={`Year ${d.year} · Balance ${inrWords(d.balance)} · Withdrawn ${inrWords(d.withdrawn)}`}
+                title={`Year ${d.year} · Balance ${formatCompact(d.balance)} · Withdrawn ${formatCompact(d.withdrawn)}`}
               >
                 <div
                   className="w-full rounded-t-[3px] bg-[#1d4d31] transition-opacity group-hover:opacity-80"
@@ -658,6 +703,7 @@ export function GoalDetail({
   onDelete: () => void
   onBack: () => void
 }) {
+  const { formatMoney, formatCompact, profile, locale } = usePlannerLocale()
   const [name, setName] = useState(goal.name)
   const [icon, setIcon] = useState(goal.icon)
   const [mode, setMode] = useState<GoalMode>(goal.mode ?? 'target')
@@ -766,14 +812,14 @@ export function GoalDetail({
     setExportError(false)
     try {
       const { downloadGoalPdf } = await import('~/lib/goalPdf')
-      await downloadGoalPdf(currentGoal)
+      await downloadGoalPdf(currentGoal, locale)
     } catch (err) {
       console.error('Could not generate the plan PDF:', err)
       setExportError(true)
     } finally {
       setExporting(false)
     }
-  }, [currentGoal])
+  }, [currentGoal, locale])
 
   // Escape closes whichever transient layer is open (delete modal takes
   // priority over the icon picker).
@@ -964,7 +1010,7 @@ export function GoalDetail({
                     label="Monthly withdrawal"
                     helper={
                       swp.sustainableWithdrawal > 0
-                        ? `≈ ${inrWords(swp.sustainableWithdrawal)}/mo would last exactly ${years} years`
+                        ? `≈ ${formatCompact(swp.sustainableWithdrawal)}/mo would last exactly ${years} years`
                         : undefined
                     }
                   />
@@ -1001,8 +1047,8 @@ export function GoalDetail({
                 suffix="% p.a."
                 helper={
                   isSwp
-                    ? 'A drawdown corpus is usually held more conservatively — often 7–9% p.a.'
-                    : 'Equity mutual funds have historically averaged ~12% over the long run.'
+                    ? profile.copy.swpReturnHelper
+                    : profile.copy.returnHelper
                 }
               />
               <Field
@@ -1016,7 +1062,7 @@ export function GoalDetail({
                 helper={
                   isSwp
                     ? 'How much you raise your monthly withdrawal each year to keep up with prices.'
-                    : 'How much you raise the monthly SIP every year.'
+                    : profile.copy.stepUpHelper
                 }
               />
               <Field
@@ -1057,187 +1103,199 @@ export function GoalDetail({
                     background: `linear-gradient(155deg, ${FOREST_SOFT} 0%, ${FOREST} 70%)`
                   }}
                 >
-              {mode === 'sip' ? (
-                <>
-                  <p className="text-[11px] font-semibold tracking-[0.25em] text-[#f4efe2]/60 uppercase">
-                    Projected corpus in {years} years
-                  </p>
-                  <p
-                    className={`mt-2 text-5xl leading-none tracking-tight text-[#f4efe2] sm:text-6xl ${displayFont.className}`}
-                  >
-                    {inr(calc.nominalTarget)}
-                  </p>
-                  <p className="mt-2 text-sm text-[#f4efe2]/70">
-                    Investing{' '}
-                    <span className="font-semibold text-[#d8b877]">
-                      {inrWords(monthlySip)}
-                    </span>{' '}
-                    a month, stepped up{' '}
-                    <span className="font-semibold text-[#d8b877]">
-                      +{stepUp}%
-                    </span>{' '}
-                    a year for {years} years
-                    {lumpSum > 0 && (
-                      <>
-                        , plus your{' '}
-                        <span className="font-semibold text-[#d8b877]">
-                          {inrWords(lumpSum)}
-                        </span>{' '}
-                        lump sum
-                      </>
-                    )}
-                    .
-                  </p>
-                  <div className="mt-7 grid grid-cols-3 gap-4 border-t border-[#f4efe2]/12 pt-6">
-                    <Stat
-                      label="Total invested"
-                      value={inrWords(calc.invested)}
-                    />
-                    <Stat label="Wealth gained" value={inrWords(calc.gain)} />
-                    <Stat
-                      label={`SIP in yr ${years}`}
-                      value={inrWords(calc.lastYearMonthly)}
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p className="text-[11px] font-semibold tracking-[0.25em] text-[#f4efe2]/60 uppercase">
-                    {calc.monthlySip > 0
-                      ? 'Start investing every month'
-                      : 'Your lump sum already covers this'}
-                  </p>
-                  <p
-                    className={`mt-2 text-5xl leading-none tracking-tight text-[#f4efe2] sm:text-6xl ${displayFont.className}`}
-                  >
-                    {inr(calc.monthlySip)}
-                  </p>
-                  {calc.monthlySip > 0 ? (
-                    <p className="mt-2 text-sm text-[#f4efe2]/70">
-                      {inrWords(calc.monthlySip)} per month, then{' '}
-                      <span className="font-semibold text-[#d8b877]">
-                        +{stepUp}%
-                      </span>{' '}
-                      a year for {years} years
-                      {lumpSum > 0 && (
-                        <>
-                          , on top of your{' '}
-                          <span className="font-semibold text-[#d8b877]">
-                            {inrWords(lumpSum)}
-                          </span>{' '}
-                          lump sum
-                        </>
-                      )}
-                      .
-                    </p>
-                  ) : (
-                    <p className="mt-2 text-sm text-[#f4efe2]/70">
-                      Your {inrWords(lumpSum)} lump sum grows to{' '}
-                      <span className="font-semibold text-[#d8b877]">
-                        {inrWords(calc.lumpFutureValue)}
-                      </span>{' '}
-                      in {years} years — no monthly SIP needed.
-                    </p>
-                  )}
-                  <div className="mt-7 grid grid-cols-3 gap-4 border-t border-[#f4efe2]/12 pt-6">
-                    <Stat
-                      label="Total invested"
-                      value={inrWords(calc.invested)}
-                    />
-                    <Stat label="Wealth gained" value={inrWords(calc.gain)} />
-                    <Stat
-                      label={
-                        lumpSum > 0 ? 'Lump sum grows to' : `SIP in yr ${years}`
-                      }
-                      value={inrWords(
-                        lumpSum > 0 ? calc.lumpFutureValue : calc.lastYearMonthly
-                      )}
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* purchasing power */}
-            <div className="rounded-2xl border-2 border-dashed border-[#b5893a]/45 bg-[#fffdf7] p-6 sm:p-7">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[11px] font-semibold tracking-[0.25em] text-[#b5893a] uppercase">
-                  Today&rsquo;s purchasing power
-                </p>
-                <span className="rounded-full bg-[#b5893a]/12 px-2.5 py-1 text-[11px] font-semibold text-[#8a6722]">
-                  @ {inflation}% inflation
-                </span>
-              </div>
-              <p
-                className={`mt-2 text-4xl text-[#10301d] sm:text-5xl ${displayFont.className}`}
-              >
-                {inr(calc.todayValue)}
-              </p>
-              <p className="mt-2 text-sm leading-relaxed text-[#10301d]/60">
-                {inrWords(calc.nominalTarget)} in {years} years buys what{' '}
-                <span className="font-semibold text-[#10301d]">
-                  {inrWords(calc.todayValue)}
-                </span>{' '}
-                buys today &mdash; inflation erodes about{' '}
-                <span className="font-semibold text-[#a23b2b]">
-                  {calc.erodedPct.toFixed(0)}%
-                </span>{' '}
-                of its value.
-              </p>
-            </div>
-
-            {/* growth chart */}
-            <div className="rounded-2xl border border-[#10301d]/10 bg-[#fffdf7] p-6 sm:p-7">
-              <div className="mb-5 flex items-center justify-between">
-                <h3
-                  className={`text-lg text-[#10301d] ${displayFont.className}`}
-                >
-                  Year-by-year growth
-                </h3>
-                <div className="flex items-center gap-4 text-[11px] text-[#10301d]/55">
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-[3px] bg-[#1d4d31]" />{' '}
-                    Invested
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-[3px] bg-[#b5893a]" />{' '}
-                    Returns
-                  </span>
-                </div>
-              </div>
-              <div className="flex h-40 items-end gap-0.75">
-                {calc.series.map(d => {
-                  const h = (d.value / maxValue) * 100
-                  const investedPct =
-                    d.value > 0 ? (d.invested / d.value) * 100 : 0
-                  return (
-                    <div
-                      key={d.year}
-                      className="group relative flex flex-1 flex-col justify-end"
-                      style={{ height: '100%' }}
-                      title={`Year ${d.year} · ${inrWords(d.value)} · Invested ${inrWords(d.invested)}`}
-                    >
-                      <div
-                        className="flex w-full flex-col-reverse overflow-hidden rounded-t-[3px] transition-opacity group-hover:opacity-80"
-                        style={{ height: `${h}%` }}
+                  {mode === 'sip' ? (
+                    <>
+                      <p className="text-[11px] font-semibold tracking-[0.25em] text-[#f4efe2]/60 uppercase">
+                        Projected corpus in {years} years
+                      </p>
+                      <p
+                        className={`mt-2 text-5xl leading-none tracking-tight text-[#f4efe2] sm:text-6xl ${displayFont.className}`}
                       >
-                        <div
-                          className="w-full bg-[#1d4d31]"
-                          style={{ height: `${investedPct}%` }}
+                        {formatMoney(calc.nominalTarget)}
+                      </p>
+                      <p className="mt-2 text-sm text-[#f4efe2]/70">
+                        Investing{' '}
+                        <span className="font-semibold text-[#d8b877]">
+                          {formatCompact(monthlySip)}
+                        </span>{' '}
+                        a month, stepped up{' '}
+                        <span className="font-semibold text-[#d8b877]">
+                          +{stepUp}%
+                        </span>{' '}
+                        a year for {years} years
+                        {lumpSum > 0 && (
+                          <>
+                            , plus your{' '}
+                            <span className="font-semibold text-[#d8b877]">
+                              {formatCompact(lumpSum)}
+                            </span>{' '}
+                            lump sum
+                          </>
+                        )}
+                        .
+                      </p>
+                      <div className="mt-7 grid grid-cols-3 gap-4 border-t border-[#f4efe2]/12 pt-6">
+                        <Stat
+                          label="Total invested"
+                          value={formatCompact(calc.invested)}
                         />
-                        <div
-                          className="w-full bg-[#b5893a]"
-                          style={{ height: `${100 - investedPct}%` }}
+                        <Stat
+                          label="Wealth gained"
+                          value={formatCompact(calc.gain)}
+                        />
+                        <Stat
+                          label={profile.copy.contributionInYear(years)}
+                          value={formatCompact(calc.lastYearMonthly)}
                         />
                       </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[11px] font-semibold tracking-[0.25em] text-[#f4efe2]/60 uppercase">
+                        {calc.monthlySip > 0
+                          ? 'Start investing every month'
+                          : 'Your lump sum already covers this'}
+                      </p>
+                      <p
+                        className={`mt-2 text-5xl leading-none tracking-tight text-[#f4efe2] sm:text-6xl ${displayFont.className}`}
+                      >
+                        {formatMoney(calc.monthlySip)}
+                      </p>
+                      {calc.monthlySip > 0 ? (
+                        <p className="mt-2 text-sm text-[#f4efe2]/70">
+                          {formatCompact(calc.monthlySip)} per month, then{' '}
+                          <span className="font-semibold text-[#d8b877]">
+                            +{stepUp}%
+                          </span>{' '}
+                          a year for {years} years
+                          {lumpSum > 0 && (
+                            <>
+                              , on top of your{' '}
+                              <span className="font-semibold text-[#d8b877]">
+                                {formatCompact(lumpSum)}
+                              </span>{' '}
+                              lump sum
+                            </>
+                          )}
+                          .
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-sm text-[#f4efe2]/70">
+                          Your {formatCompact(lumpSum)} lump sum grows to{' '}
+                          <span className="font-semibold text-[#d8b877]">
+                            {formatCompact(calc.lumpFutureValue)}
+                          </span>{' '}
+                          in {years} years — no monthly{' '}
+                          {profile.copy.contribution} needed.
+                        </p>
+                      )}
+                      <div className="mt-7 grid grid-cols-3 gap-4 border-t border-[#f4efe2]/12 pt-6">
+                        <Stat
+                          label="Total invested"
+                          value={formatCompact(calc.invested)}
+                        />
+                        <Stat
+                          label="Wealth gained"
+                          value={formatCompact(calc.gain)}
+                        />
+                        <Stat
+                          label={
+                            lumpSum > 0
+                              ? 'Lump sum grows to'
+                              : profile.copy.contributionInYear(years)
+                          }
+                          value={formatCompact(
+                            lumpSum > 0
+                              ? calc.lumpFutureValue
+                              : calc.lastYearMonthly
+                          )}
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* purchasing power */}
+                <div className="rounded-2xl border-2 border-dashed border-[#b5893a]/45 bg-[#fffdf7] p-6 sm:p-7">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[11px] font-semibold tracking-[0.25em] text-[#b5893a] uppercase">
+                      Today&rsquo;s purchasing power
+                    </p>
+                    <span className="rounded-full bg-[#b5893a]/12 px-2.5 py-1 text-[11px] font-semibold text-[#8a6722]">
+                      @ {inflation}% inflation
+                    </span>
+                  </div>
+                  <p
+                    className={`mt-2 text-4xl text-[#10301d] sm:text-5xl ${displayFont.className}`}
+                  >
+                    {formatMoney(calc.todayValue)}
+                  </p>
+                  <p className="mt-2 text-sm leading-relaxed text-[#10301d]/60">
+                    {formatCompact(calc.nominalTarget)} in {years} years buys
+                    what{' '}
+                    <span className="font-semibold text-[#10301d]">
+                      {formatCompact(calc.todayValue)}
+                    </span>{' '}
+                    buys today &mdash; inflation erodes about{' '}
+                    <span className="font-semibold text-[#a23b2b]">
+                      {calc.erodedPct.toFixed(0)}%
+                    </span>{' '}
+                    of its value.
+                  </p>
+                </div>
+
+                {/* growth chart */}
+                <div className="rounded-2xl border border-[#10301d]/10 bg-[#fffdf7] p-6 sm:p-7">
+                  <div className="mb-5 flex items-center justify-between">
+                    <h3
+                      className={`text-lg text-[#10301d] ${displayFont.className}`}
+                    >
+                      Year-by-year growth
+                    </h3>
+                    <div className="flex items-center gap-4 text-[11px] text-[#10301d]/55">
+                      <span className="flex items-center gap-1.5">
+                        <span className="h-2.5 w-2.5 rounded-[3px] bg-[#1d4d31]" />{' '}
+                        Invested
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="h-2.5 w-2.5 rounded-[3px] bg-[#b5893a]" />{' '}
+                        Returns
+                      </span>
                     </div>
-                  )
-                })}
-              </div>
-              <div className="mt-2 flex justify-between text-[11px] text-[#10301d]/40">
-                <span>Yr 1</span>
-                <span>Yr {years}</span>
-              </div>
+                  </div>
+                  <div className="flex h-40 items-end gap-0.75">
+                    {calc.series.map(d => {
+                      const h = (d.value / maxValue) * 100
+                      const investedPct =
+                        d.value > 0 ? (d.invested / d.value) * 100 : 0
+                      return (
+                        <div
+                          key={d.year}
+                          className="group relative flex flex-1 flex-col justify-end"
+                          style={{ height: '100%' }}
+                          title={`Year ${d.year} · ${formatCompact(d.value)} · Invested ${formatCompact(d.invested)}`}
+                        >
+                          <div
+                            className="flex w-full flex-col-reverse overflow-hidden rounded-t-[3px] transition-opacity group-hover:opacity-80"
+                            style={{ height: `${h}%` }}
+                          >
+                            <div
+                              className="w-full bg-[#1d4d31]"
+                              style={{ height: `${investedPct}%` }}
+                            />
+                            <div
+                              className="w-full bg-[#b5893a]"
+                              style={{ height: `${100 - investedPct}%` }}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="mt-2 flex justify-between text-[11px] text-[#10301d]/40">
+                    <span>Yr 1</span>
+                    <span>Yr {years}</span>
+                  </div>
                 </div>
               </>
             )}
@@ -1257,7 +1315,7 @@ export function GoalDetail({
         <p className="mt-8 text-center text-xs leading-relaxed text-[#10301d]/40">
           {isSwp
             ? 'Estimates assume monthly compounding with withdrawals at the start of each month and an annual step-up. Actual returns vary and are not guaranteed.'
-            : 'Estimates assume monthly compounding with contributions at the start of each month and an annual step-up. Actual mutual-fund returns vary and are not guaranteed.'}
+            : profile.copy.disclaimer}
         </p>
       </div>
 

@@ -1,6 +1,8 @@
 'use client'
 
-import { useEffect, useRef, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { usePlannerLocale } from '~/components/locale/LocaleProvider'
+import { RegionSwitcher } from '~/components/locale/RegionSwitcher'
 import { displayFont } from '~/lib/fonts'
 import {
   CHART_PALETTE,
@@ -10,8 +12,7 @@ import {
   calcGoal,
   calcSwp,
   downloadGoals,
-  inrWords,
-  parseGoalsFile,
+  parsePlannerExport
 } from '~/lib/goals'
 import { GoalCard } from './GoalCard'
 import { NewGoalModal } from './NewGoalModal'
@@ -49,13 +50,14 @@ type GoalPair = { goal: Goal; calc: GoalCalc; color: string }
 
 /* ── SIP allocation stacked bar ───────────────────────────── */
 function SipAllocation({ pairs }: { pairs: GoalPair[] }) {
+  const { formatCompact, profile } = usePlannerLocale()
   const total = pairs.reduce((s, p) => s + p.calc.monthlySip, 0)
   if (total <= 0) return null
 
   return (
     <div className="rounded-2xl border border-[#10301d]/10 bg-[#fffdf7] p-6 shadow-[0_2px_16px_-8px_rgba(16,48,29,0.15)]">
       <h3 className={`mb-4 text-lg text-[#10301d] ${displayFont.className}`}>
-        Monthly SIP allocation
+        {profile.copy.allocationHeading}
       </h3>
 
       {/* stacked bar */}
@@ -66,7 +68,7 @@ function SipAllocation({ pairs }: { pairs: GoalPair[] }) {
             <div
               key={goal.id}
               style={{ width: `${pct}%`, background: color }}
-              title={`${goal.name}: ${inrWords(calc.monthlySip)}/mo (${pct.toFixed(0)}%)`}
+              title={`${goal.name}: ${formatCompact(calc.monthlySip)}/mo (${pct.toFixed(0)}%)`}
             />
           )
         })}
@@ -85,7 +87,7 @@ function SipAllocation({ pairs }: { pairs: GoalPair[] }) {
               <span className="text-[12px] text-[#10301d]/60">
                 {goal.icon} {goal.name}{' '}
                 <span className="font-semibold text-[#10301d]/80">
-                  {inrWords(calc.monthlySip)}/mo · {pct.toFixed(0)}%
+                  {formatCompact(calc.monthlySip)}/mo · {pct.toFixed(0)}%
                 </span>
               </span>
             </div>
@@ -241,6 +243,7 @@ export function Dashboard({
   onClear: () => void
   onImport: (goals: Goal[]) => void
 }) {
+  const { formatCompact, profile, locale, setLocale } = usePlannerLocale()
   const [showModal, setShowModal] = useState(false)
   const [showClear, setShowClear] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
@@ -265,7 +268,10 @@ export function Dashboard({
   const swpGoals = goals.filter(g => g.mode === 'swp')
   const totalSip = accumPairs.reduce((s, p) => s + p.calc.monthlySip, 0)
   const totalTarget = accumPairs.reduce((s, p) => s + p.calc.nominalTarget, 0)
-  const totalIncome = swpGoals.reduce((s, g) => s + calcSwp(g).monthlyWithdrawal, 0)
+  const totalIncome = swpGoals.reduce(
+    (s, g) => s + calcSwp(g).monthlyWithdrawal,
+    0
+  )
   const maxYears = goals.length ? Math.max(...goals.map(g => g.years)) : 0
 
   const hasGoals = goals.length > 0
@@ -279,11 +285,14 @@ export function Dashboard({
     const reader = new FileReader()
     reader.onload = () => {
       try {
-        const imported = parseGoalsFile(String(reader.result))
-        onImport(imported)
+        const imported = parsePlannerExport(String(reader.result))
+        if (imported.locale) setLocale(imported.locale)
+        onImport(imported.goals)
         setImportMsg({
           kind: 'ok',
-          text: `Imported ${imported.length} ${imported.length === 1 ? 'goal' : 'goals'}.`
+          text: imported.locale
+            ? `Imported ${imported.goals.length} ${imported.goals.length === 1 ? 'goal' : 'goals'} · switched to ${imported.locale.currency}.`
+            : `Imported ${imported.goals.length} ${imported.goals.length === 1 ? 'goal' : 'goals'}.`
         })
       } catch (err) {
         setImportMsg({
@@ -302,7 +311,7 @@ export function Dashboard({
     setPdfBusy(true)
     try {
       const { downloadGoalsPdf } = await import('~/lib/goalPdf')
-      await downloadGoalsPdf(goals)
+      await downloadGoalsPdf(goals, locale)
     } catch (err) {
       console.error('Could not generate the plan PDF:', err)
       setImportMsg({
@@ -315,7 +324,7 @@ export function Dashboard({
   }
 
   const handleShare = async () => {
-    const url = buildShareUrl(goals)
+    const url = buildShareUrl(goals, locale)
     try {
       await navigator.clipboard.writeText(url)
       setImportMsg({
@@ -351,13 +360,15 @@ export function Dashboard({
             {hasGoals && (
               <p className="mt-3 text-[15px] text-[#10301d]/55">
                 {goals.length} {goals.length === 1 ? 'goal' : 'goals'}
-                {hasAccum && ` · ${inrWords(totalSip)}/mo SIP`}
-                {hasSwp && ` · ${inrWords(totalIncome)}/mo income`}
+                {hasAccum &&
+                  ` · ${formatCompact(totalSip)}/mo ${profile.copy.contribution}`}
+                {hasSwp && ` · ${formatCompact(totalIncome)}/mo income`}
               </p>
             )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:pt-1">
+            <RegionSwitcher />
             <input
               ref={fileRef}
               type="file"
@@ -415,7 +426,7 @@ export function Dashboard({
             {/* export JSON */}
             {hasGoals && (
               <button
-                onClick={() => downloadGoals(goals)}
+                onClick={() => downloadGoals(goals, locale)}
                 title="Export goals to a JSON file"
                 aria-label="Export goals to a JSON file"
                 className="flex h-9 w-9 items-center justify-center rounded-full border border-[#10301d]/20 text-[#10301d]/45 transition-colors hover:border-[#1d4d31]/50 hover:text-[#1d4d31]"
@@ -557,21 +568,21 @@ export function Dashboard({
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
               {hasAccum && (
                 <StatTile
-                  label="Total monthly SIP"
-                  value={inrWords(totalSip)}
+                  label={profile.copy.monthlyContribution}
+                  value={formatCompact(totalSip)}
                   sub={`across ${accumPairs.length} ${accumPairs.length === 1 ? 'goal' : 'goals'}`}
                 />
               )}
               {hasAccum && (
                 <StatTile
                   label="Total target wealth"
-                  value={inrWords(totalTarget)}
+                  value={formatCompact(totalTarget)}
                 />
               )}
               {hasSwp && (
                 <StatTile
                   label="Monthly income"
-                  value={inrWords(totalIncome)}
+                  value={formatCompact(totalIncome)}
                   sub={`from ${swpGoals.length} withdrawal ${swpGoals.length === 1 ? 'plan' : 'plans'}`}
                 />
               )}

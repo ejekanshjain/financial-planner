@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { ChatWidget } from '~/components/chat/ChatWidget'
+import { LocaleProvider } from '~/components/locale/LocaleProvider'
+import { RegionPicker } from '~/components/locale/RegionPicker'
 import { Dashboard } from '~/components/planner/Dashboard'
 import { GoalDetail } from '~/components/planner/GoalDetail'
 import {
@@ -11,9 +13,17 @@ import {
   loadGoals,
   saveGoals
 } from '~/lib/goals'
+import {
+  loadLocale,
+  PlannerLocale,
+  saveLocale,
+  suggestLocale
+} from '~/lib/locale'
 
 export default function FinancialPlanner() {
   const [goals, setGoals] = useState<Goal[]>([])
+  const [locale, setLocaleState] = useState<PlannerLocale | null>(null)
+  const [suggested, setSuggested] = useState<PlannerLocale | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const [storageError, setStorageError] = useState(false)
@@ -28,12 +38,17 @@ export default function FinancialPlanner() {
     let next = stored
     if (shared) {
       const byId = new Map(stored.map(g => [g.id, g]))
-      shared.forEach(g => byId.set(g.id, g))
+      shared.goals.forEach(g => byId.set(g.id, g))
       next = [...byId.values()]
       saveGoals(next)
     }
+    const fromShare = shared?.locale
+    const storedLocale = loadLocale()
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setGoals(next)
+    setLocaleState(fromShare ?? storedLocale)
+    if (fromShare) saveLocale(fromShare)
+    setSuggested(suggestLocale())
     setHydrated(true)
   }, [])
 
@@ -80,12 +95,21 @@ export default function FinancialPlanner() {
     [goals, persist]
   )
 
+  const handleLocale = useCallback((next: PlannerLocale) => {
+    setLocaleState(next)
+    saveLocale(next)
+  }, [])
+
   if (!hydrated) return null
+
+  if (!locale) {
+    return <RegionPicker suggested={suggested} onConfirm={handleLocale} />
+  }
 
   const selected = goals.find(g => g.id === selectedId) ?? null
 
   return (
-    <>
+    <LocaleProvider locale={locale} onChange={handleLocale}>
       {selected ? (
         <GoalDetail
           key={selected.id}
@@ -106,6 +130,6 @@ export default function FinancialPlanner() {
         />
       )}
       <ChatWidget goals={goals} clearSignal={clearSignal} />
-    </>
+    </LocaleProvider>
   )
 }

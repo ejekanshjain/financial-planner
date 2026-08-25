@@ -2,26 +2,27 @@ import { describe, expect, it } from 'vitest'
 import {
   CRORE,
   Goal,
-  GOAL_DEFAULTS,
   calcGoal,
   calcSwp,
   formatYearsMonths,
-  inr,
-  inrWords,
   logSliderToValue,
   makeGoal,
-  MAX_TARGET,
   valueToLogSlider
 } from './goals'
+import { profileFor } from './locale'
 
-/** Build a Goal from the shared defaults, overriding only what a test cares about. */
+const IN_DEFAULTS = profileFor({ region: 'IN', currency: 'INR' }).defaults
+const IN_LOG_MIN = 1e5
+const IN_LOG_MAX = 100 * CRORE
+
+/** Build a Goal from Indian planning defaults, overriding only what a test cares about. */
 function goal(overrides: Partial<Goal> = {}): Goal {
   return {
     id: 'test',
     name: 'Test goal',
     icon: '🎯',
     createdAt: 0,
-    ...GOAL_DEFAULTS,
+    ...IN_DEFAULTS,
     ...overrides
   }
 }
@@ -49,7 +50,13 @@ describe('calcGoal — solving for the monthly SIP', () => {
       { target: 50e5, years: 5, annualReturn: 9, stepUp: 5, lumpSum: 5e5 },
       // Lump sum kept well under target so the SIP still does the work — the
       // overshoot case is covered separately under "edge cases".
-      { target: 2 * CRORE, years: 30, annualReturn: 13, stepUp: 15, lumpSum: 2e5 }
+      {
+        target: 2 * CRORE,
+        years: 30,
+        annualReturn: 13,
+        stepUp: 15,
+        lumpSum: 2e5
+      }
     ]
     for (const cfg of configs) {
       const c = calcGoal(goal(cfg))
@@ -59,7 +66,12 @@ describe('calcGoal — solving for the monthly SIP', () => {
   })
 
   it('matches the closed-form annuity-due SIP when step-up is zero', () => {
-    const g = goal({ target: 1 * CRORE, years: 10, annualReturn: 12, stepUp: 0 })
+    const g = goal({
+      target: 1 * CRORE,
+      years: 10,
+      annualReturn: 12,
+      stepUp: 0
+    })
     const c = calcGoal(g)
     const expected = (1 * CRORE) / annuityDueFactor(12, 10)
     expectClose(c.monthlySip, expected, 1e-9)
@@ -118,7 +130,12 @@ describe('calcGoal — solving for the monthly SIP', () => {
   describe('inflation', () => {
     it('grosses the target up to nominal terms when inflateTarget is set', () => {
       const c = calcGoal(
-        goal({ target: 1 * CRORE, years: 10, inflation: 6, inflateTarget: true })
+        goal({
+          target: 1 * CRORE,
+          years: 10,
+          inflation: 6,
+          inflateTarget: true
+        })
       )
       expectClose(c.nominalTarget, 1 * CRORE * 1.06 ** 10, 1e-9)
       // Discounting the nominal target back returns the original today's-money figure.
@@ -146,7 +163,12 @@ describe('calcGoal — solving for the monthly SIP', () => {
   describe('edge cases', () => {
     it('needs no SIP when a lump sum already overshoots the target', () => {
       const c = calcGoal(
-        goal({ target: 1 * CRORE, years: 10, annualReturn: 12, lumpSum: 1 * CRORE })
+        goal({
+          target: 1 * CRORE,
+          years: 10,
+          annualReturn: 12,
+          lumpSum: 1 * CRORE
+        })
       )
       expect(c.monthlySip).toBe(0)
       // Plan ends on the (overshooting) compounded lump sum, not the target.
@@ -207,10 +229,12 @@ describe('calcGoal — SIP-driven (forward) mode', () => {
       calcGoal(goal({ mode: 'sip', monthlySip: 20000 })).nominalTarget
     ).toBeGreaterThan(base.nominalTarget)
     expect(
-      calcGoal(goal({ mode: 'sip', monthlySip: 10000, stepUp: 20 })).nominalTarget
+      calcGoal(goal({ mode: 'sip', monthlySip: 10000, stepUp: 20 }))
+        .nominalTarget
     ).toBeGreaterThan(base.nominalTarget)
     expect(
-      calcGoal(goal({ mode: 'sip', monthlySip: 10000, years: 20 })).nominalTarget
+      calcGoal(goal({ mode: 'sip', monthlySip: 10000, years: 20 }))
+        .nominalTarget
     ).toBeGreaterThan(base.nominalTarget)
   })
 
@@ -241,7 +265,9 @@ describe('calcGoal — SIP-driven (forward) mode', () => {
 
   it('defaults a goal with no mode to the target-driven plan', () => {
     // Backward compatibility: pre-mode stored goals must still solve for the SIP.
-    const legacy = { ...goal({ target: 1 * CRORE, years: 10, stepUp: 0 }) } as Goal
+    const legacy = {
+      ...goal({ target: 1 * CRORE, years: 10, stepUp: 0 })
+    } as Goal
     // Strip mode to mimic an old export.
     delete (legacy as Partial<Goal>).mode
     const c = calcGoal(legacy)
@@ -288,7 +314,13 @@ describe('calcSwp — systematic withdrawal (decumulation)', () => {
 
   it('leaves money on the table — and can grow — when withdrawing modestly', () => {
     const c = calcSwp(
-      swpGoal({ target: 5 * CRORE, monthlySip: 50000, years: 10, annualReturn: 8, stepUp: 0 })
+      swpGoal({
+        target: 5 * CRORE,
+        monthlySip: 50000,
+        years: 10,
+        annualReturn: 8,
+        stepUp: 0
+      })
     )
     expect(c.sustainable).toBe(true)
     expect(c.depletesBeforeHorizon).toBe(false)
@@ -307,7 +339,9 @@ describe('calcSwp — systematic withdrawal (decumulation)', () => {
   })
 
   it('treats a long-lasting corpus as sustainable (capped longevity)', () => {
-    const c = calcSwp(swpGoal({ target: 10 * CRORE, monthlySip: 20000, stepUp: 0 }))
+    const c = calcSwp(
+      swpGoal({ target: 10 * CRORE, monthlySip: 20000, stepUp: 0 })
+    )
     expect(c.sustainable).toBe(true)
     expect(c.lastsMonths).toBe(1200)
   })
@@ -325,12 +359,17 @@ describe('formatYearsMonths', () => {
 
 describe('makeGoal', () => {
   it('merges defaults with overrides and stamps an id', () => {
-    const g = makeGoal('Retirement', '🏖️', { target: 5 * CRORE, years: 25 })
+    const g = makeGoal(
+      'Retirement',
+      '🏖️',
+      { target: 5 * CRORE, years: 25 },
+      IN_DEFAULTS
+    )
     expect(g.name).toBe('Retirement')
     expect(g.icon).toBe('🏖️')
     expect(g.target).toBe(5 * CRORE)
     expect(g.years).toBe(25)
-    expect(g.annualReturn).toBe(GOAL_DEFAULTS.annualReturn)
+    expect(g.annualReturn).toBe(IN_DEFAULTS.annualReturn)
     expect(g.id).toBeTruthy()
     expect(typeof g.createdAt).toBe('number')
   })
@@ -338,16 +377,16 @@ describe('makeGoal', () => {
 
 describe('log-scale slider conversions', () => {
   it('maps the slider endpoints to the value bounds', () => {
-    expect(logSliderToValue(0)).toBe(0)
-    expect(logSliderToValue(1)).toBe(1e5)
-    expect(logSliderToValue(1000)).toBe(MAX_TARGET)
-    expect(valueToLogSlider(0)).toBe(0)
+    expect(logSliderToValue(0, IN_LOG_MIN, IN_LOG_MAX)).toBe(0)
+    expect(logSliderToValue(1, IN_LOG_MIN, IN_LOG_MAX)).toBe(1e5)
+    expect(logSliderToValue(1000, IN_LOG_MIN, IN_LOG_MAX)).toBe(IN_LOG_MAX)
+    expect(valueToLogSlider(0, IN_LOG_MIN, IN_LOG_MAX)).toBe(0)
   })
 
   it('is monotonic: a higher slider position yields a larger value', () => {
-    let prev = logSliderToValue(1)
+    let prev = logSliderToValue(1, IN_LOG_MIN, IN_LOG_MAX)
     for (let pos = 100; pos <= 1000; pos += 100) {
-      const v = logSliderToValue(pos)
+      const v = logSliderToValue(pos, IN_LOG_MIN, IN_LOG_MAX)
       expect(v).toBeGreaterThan(prev)
       prev = v
     }
@@ -355,48 +394,12 @@ describe('log-scale slider conversions', () => {
 
   it('round-trips a value back to a close value', () => {
     for (const value of [5e5, 1e6, 5e6, 1 * CRORE, 5 * CRORE, 25 * CRORE]) {
-      const back = logSliderToValue(valueToLogSlider(value))
-      // The slider rounds to a few significant figures, so allow a small drift.
+      const back = logSliderToValue(
+        valueToLogSlider(value, IN_LOG_MIN, IN_LOG_MAX),
+        IN_LOG_MIN,
+        IN_LOG_MAX
+      )
       expectClose(back, value, 0.03)
     }
-  })
-})
-
-describe('inr — full-precision Indian formatting', () => {
-  it('groups digits in the Indian lakh/crore style', () => {
-    expect(inr(1234567)).toBe('₹12,34,567')
-    expect(inr(100000)).toBe('₹1,00,000')
-    expect(inr(0)).toBe('₹0')
-  })
-
-  it('rounds fractional rupees and guards against non-finite input', () => {
-    expect(inr(1234.6)).toBe('₹1,235')
-    expect(inr(NaN)).toBe('₹0')
-    expect(inr(Infinity)).toBe('₹0')
-  })
-})
-
-describe('inrWords — compact lakh/crore labels', () => {
-  it('labels crores, lakhs and thousands', () => {
-    expect(inrWords(1 * CRORE)).toBe('₹1 Cr')
-    expect(inrWords(12345678)).toBe('₹1.23 Cr')
-    expect(inrWords(50e5)).toBe('₹50 L')
-    expect(inrWords(1500)).toBe('₹1.5 K')
-  })
-
-  it('falls back to full formatting below a thousand', () => {
-    expect(inrWords(999)).toBe('₹999')
-    expect(inrWords(0)).toBe('₹0')
-  })
-
-  it('returns ₹0 for non-finite input', () => {
-    expect(inrWords(NaN)).toBe('₹0')
-  })
-
-  it('drops trailing zeros after the decimal', () => {
-    expect(inrWords(1.5 * CRORE)).toBe('₹1.5 Cr')
-    expect(inrWords(1.2 * CRORE)).toBe('₹1.2 Cr')
-    expect(inrWords(2 * CRORE)).toBe('₹2 Cr')
-    expect(inrWords(2.5e5)).toBe('₹2.5 L')
   })
 })

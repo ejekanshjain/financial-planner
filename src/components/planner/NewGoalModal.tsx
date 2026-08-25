@@ -1,27 +1,21 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { usePlannerLocale } from '~/components/locale/LocaleProvider'
+import { displayFont } from '~/lib/fonts'
 import {
   Goal,
-  GoalMode,
   GOAL_ICONS,
-  GOAL_DEFAULTS,
-  TARGET_PRESETS,
-  SIP_PRESETS,
-  SIP_SLIDER_MAX,
-  SWP_DEFAULTS,
-  makeGoal,
+  GoalMode,
   logSliderToValue,
-  valueToLogSlider,
-  inrWords,
-  MAX_SIP,
-  MAX_TARGET,
+  makeGoal,
+  valueToLogSlider
 } from '~/lib/goals'
-import { displayFont } from '~/lib/fonts'
 
-const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
+const clamp = (n: number, lo: number, hi: number) =>
+  Math.min(hi, Math.max(lo, n))
 
-/* ── lump-amount field: ₹ suffix, presets, log slider (target / corpus) ── */
+/* ── lump-amount field: currency suffix, presets, log slider (target / corpus) ── */
 function AmountField({
   label,
   value,
@@ -33,10 +27,13 @@ function AmountField({
   onChange: (n: number) => void
   helper: string
 }) {
+  const { symbol, profile } = usePlannerLocale()
   const [draft, setDraft] = useState<string | null>(null)
   const commit = () => {
     const parsed = Number((draft ?? String(value)).replace(/,/g, ''))
-    onChange(clamp(Number.isFinite(parsed) ? parsed : value, 0, MAX_TARGET))
+    onChange(
+      clamp(Number.isFinite(parsed) ? parsed : value, 0, profile.maxTarget)
+    )
     setDraft(null)
   }
   return (
@@ -53,19 +50,19 @@ function AmountField({
             onChange={e => {
               setDraft(e.target.value)
               const v = Number(e.target.value.replace(/,/g, ''))
-              if (Number.isFinite(v)) onChange(Math.min(v, MAX_TARGET))
+              if (Number.isFinite(v)) onChange(Math.min(v, profile.maxTarget))
             }}
             onBlur={commit}
             onKeyDown={e => e.key === 'Enter' && commit()}
             className="w-28 [appearance:textfield] bg-transparent px-3 py-1.5 text-right text-[14px] font-semibold text-[#10301d] tabular-nums outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
           />
           <span className="flex items-center bg-[#10301d]/5 px-2 text-[12px] font-medium text-[#10301d]/50">
-            ₹
+            {symbol}
           </span>
         </div>
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {TARGET_PRESETS.map(p => (
+        {profile.targetPresets.map(p => (
           <button
             key={p.label}
             type="button"
@@ -86,12 +83,18 @@ function AmountField({
       <input
         type="range"
         aria-label={`${label} slider`}
-        value={valueToLogSlider(value)}
+        value={valueToLogSlider(value, profile.logMin, profile.maxTarget)}
         min={0}
         max={1000}
         step={1}
         onChange={e => {
-          onChange(logSliderToValue(Number(e.target.value)))
+          onChange(
+            logSliderToValue(
+              Number(e.target.value),
+              profile.logMin,
+              profile.maxTarget
+            )
+          )
           setDraft(null)
         }}
         className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#10301d]/12 accent-[#1d4d31] outline-none"
@@ -113,10 +116,13 @@ function MonthlyField({
   onChange: (n: number) => void
   helper: string
 }) {
+  const { symbol, profile } = usePlannerLocale()
   const [draft, setDraft] = useState<string | null>(null)
   const commit = () => {
     const parsed = Number((draft ?? String(value)).replace(/,/g, ''))
-    onChange(clamp(Number.isFinite(parsed) ? parsed : value, 0, MAX_SIP))
+    onChange(
+      clamp(Number.isFinite(parsed) ? parsed : value, 0, profile.maxMonthly)
+    )
     setDraft(null)
   }
   return (
@@ -127,7 +133,7 @@ function MonthlyField({
         </label>
         <div className="flex items-stretch overflow-hidden rounded-lg border border-[#10301d]/15 bg-white focus-within:border-[#b5893a] focus-within:ring-2 focus-within:ring-[#b5893a]/25">
           <span className="flex items-center bg-[#10301d]/5 px-2 text-[12px] font-medium text-[#10301d]/50">
-            ₹
+            {symbol}
           </span>
           <input
             type="number"
@@ -136,7 +142,7 @@ function MonthlyField({
             onChange={e => {
               setDraft(e.target.value)
               const v = Number(e.target.value.replace(/,/g, ''))
-              if (Number.isFinite(v)) onChange(Math.min(v, MAX_SIP))
+              if (Number.isFinite(v)) onChange(Math.min(v, profile.maxMonthly))
             }}
             onBlur={commit}
             onKeyDown={e => e.key === 'Enter' && commit()}
@@ -148,7 +154,7 @@ function MonthlyField({
         </div>
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {SIP_PRESETS.map(p => (
+        {profile.monthlyPresets.map(p => (
           <button
             key={p.label}
             type="button"
@@ -169,10 +175,10 @@ function MonthlyField({
       <input
         type="range"
         aria-label={`${label} slider`}
-        value={Math.min(value, SIP_SLIDER_MAX)}
+        value={Math.min(value, profile.monthlySliderMax)}
         min={0}
-        max={SIP_SLIDER_MAX}
-        step={500}
+        max={profile.monthlySliderMax}
+        step={profile.monthlySliderStep}
         onChange={e => {
           onChange(Number(e.target.value))
           setDraft(null)
@@ -186,26 +192,27 @@ function MonthlyField({
 
 export function NewGoalModal({
   onClose,
-  onCreate,
+  onCreate
 }: {
   onClose: () => void
   onCreate: (goal: Goal) => void
 }) {
+  const { profile, formatCompact } = usePlannerLocale()
   const [name, setName] = useState('')
   const [icon, setIcon] = useState('🎯')
   const [mode, setMode] = useState<GoalMode>('target')
-  const [target, setTarget] = useState(GOAL_DEFAULTS.target)
-  const [monthlySip, setMonthlySip] = useState(GOAL_DEFAULTS.monthlySip)
-  const [years, setYears] = useState(GOAL_DEFAULTS.years)
+  const [target, setTarget] = useState(profile.defaults.target)
+  const [monthlySip, setMonthlySip] = useState(profile.defaults.monthlySip)
+  const [years, setYears] = useState(profile.defaults.years)
   // true while `name` holds an auto-filled label from an icon click (not user-typed)
   const [nameIsAuto, setNameIsAuto] = useState(false)
 
   // Switching into withdrawal mode seeds friendlier decumulation defaults.
   const handleMode = (m: GoalMode) => {
     if (m === 'swp' && mode !== 'swp') {
-      setTarget(SWP_DEFAULTS.corpus)
-      setMonthlySip(SWP_DEFAULTS.withdrawal)
-      setYears(SWP_DEFAULTS.years)
+      setTarget(profile.swp.corpus)
+      setMonthlySip(profile.swp.withdrawal)
+      setYears(profile.swp.years)
     }
     setMode(m)
   }
@@ -237,11 +244,12 @@ export function NewGoalModal({
               target,
               monthlySip,
               years,
-              annualReturn: SWP_DEFAULTS.annualReturn,
-              stepUp: SWP_DEFAULTS.stepUp
+              annualReturn: profile.swp.annualReturn,
+              stepUp: profile.swp.stepUp,
+              inflation: profile.swp.inflation
             }
           : { mode, target, years }
-    onCreate(makeGoal(name.trim(), icon, overrides))
+    onCreate(makeGoal(name.trim(), icon, overrides, profile.defaults))
     onClose()
   }
 
@@ -290,7 +298,7 @@ export function NewGoalModal({
             }}
             onKeyDown={e => e.key === 'Enter' && handleCreate()}
             autoFocus
-            className="w-full rounded-xl border border-[#10301d]/15 bg-white px-4 py-2.5 text-[15px] text-[#10301d] placeholder:text-[#10301d]/30 outline-none transition focus:border-[#b5893a] focus:ring-2 focus:ring-[#b5893a]/25"
+            className="w-full rounded-xl border border-[#10301d]/15 bg-white px-4 py-2.5 text-[15px] text-[#10301d] transition outline-none placeholder:text-[#10301d]/30 focus:border-[#b5893a] focus:ring-2 focus:ring-[#b5893a]/25"
           />
         </div>
 
@@ -308,7 +316,7 @@ export function NewGoalModal({
                 title={ic.label}
                 className={`flex h-10 w-10 items-center justify-center rounded-xl text-xl transition-all ${
                   icon === ic.emoji
-                    ? 'bg-[#1d4d31] ring-2 ring-[#1d4d31]/30 ring-offset-1 scale-110'
+                    ? 'scale-110 bg-[#1d4d31] ring-2 ring-[#1d4d31]/30 ring-offset-1'
                     : 'bg-[#10301d]/6 hover:bg-[#10301d]/12'
                 }`}
               >
@@ -327,7 +335,7 @@ export function NewGoalModal({
             {(
               [
                 { value: 'target', label: 'Target' },
-                { value: 'sip', label: 'SIP' },
+                { value: 'sip', label: profile.copy.contributionModeLabel },
                 { value: 'swp', label: 'Withdraw' }
               ] as { value: GoalMode; label: string }[]
             ).map(o => (
@@ -354,15 +362,15 @@ export function NewGoalModal({
             label="Target amount"
             value={target}
             onChange={setTarget}
-            helper={inrWords(target)}
+            helper={formatCompact(target)}
           />
         )}
         {mode === 'sip' && (
           <MonthlyField
-            label="Monthly SIP"
+            label={profile.copy.monthlyContribution}
             value={monthlySip}
             onChange={setMonthlySip}
-            helper={`${inrWords(monthlySip)} a month — we’ll project the corpus it grows into`}
+            helper={`${formatCompact(monthlySip)} a month — we’ll project the corpus it grows into`}
           />
         )}
         {mode === 'swp' && (
@@ -371,13 +379,13 @@ export function NewGoalModal({
               label="Retirement corpus"
               value={target}
               onChange={setTarget}
-              helper={`${inrWords(target)} saved up — the pot you’ll draw from`}
+              helper={`${formatCompact(target)} saved up — the pot you’ll draw from`}
             />
             <MonthlyField
               label="Monthly withdrawal"
               value={monthlySip}
               onChange={setMonthlySip}
-              helper={`${inrWords(monthlySip)} a month to start — we’ll show how long it lasts`}
+              helper={`${formatCompact(monthlySip)} a month to start — we’ll show how long it lasts`}
             />
           </>
         )}
@@ -388,7 +396,9 @@ export function NewGoalModal({
             <label className="text-[12px] font-semibold tracking-widest text-[#10301d]/55 uppercase">
               {mode === 'swp' ? 'Plan for' : 'Years to goal'}
             </label>
-            <span className={`text-lg font-medium text-[#10301d] ${displayFont.className}`}>
+            <span
+              className={`text-lg font-medium text-[#10301d] ${displayFont.className}`}
+            >
               {years} yr
             </span>
           </div>
